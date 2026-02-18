@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✨ 星河聊天室 · 精美公共聊天室</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 动态背景 */
+        .background-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 3s infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.2; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        .floating-shape {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            filter: blur(60px);
+            animation: float 20s infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(30px, -50px) rotate(120deg); }
+            66% { transform: translate(-20px, 20px) rotate(240deg); }
+        }
+
+        .chat-wrapper {
+            width: 95%;
+            max-width: 1400px;
+            height: 90vh;
+            background: rgba(255, 255, 255, 0.95);
+            /* backdrop-filter: blur(10px); */
+            border-radius: 30px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            overflow: hidden;
+            position: relative;
+            z-index: 1;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-header {
+            padding: 25px 20px;
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-header::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);
+            animation: rotate 10s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .sidebar-header h3 {
+            font-size: 18px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .online-count {
+            font-size: 36px;
+            font-weight: bold;
+            position: relative;
+            z-index: 1;
+        }
+
+        .online-count small {
+            font-size: 14px;
+            font-weight: normal;
+            opacity: 0.8;
+        }
+
+        .user-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .user-item {
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            background: white;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            animation: slideInRight 0.3s ease;
+            cursor: pointer;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .user-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.2);
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+
+        .user-item:hover .user-avatar {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .user-info {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .user-status {
+            font-size: 12px;
+            color: #2ecc71;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .user-status i {
+            font-size: 8px;
+        }
+
+        /* 主聊天区 */
+        .main-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        .chat-header {
+            padding: 20px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-header h2 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chat-header h2 i {
+            font-size: 28px;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 20px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        /* 登录区域 */
+        .login-container {
+            padding: 30px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 150px;
+        }
+
+        .login-box {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 10px 30px rgba(74, 144, 226, 0.2); }
+            50% { box-shadow: 0 10px 40px rgba(74, 144, 226, 0.4); }
+            100% { box-shadow: 0 10px 30px rgba(74, 144, 226, 0.2); }
+        }
+
+        .login-box h3 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 24px;
+        }
+
+        .login-box h3 i {
+            color: #4a90e2;
+            margin-right: 10px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .input-group input:focus {
+            border-color: #4a90e2;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(74, 144, 226, 0.3);
+        }
+
+        .login-btn i {
+            transition: transform 0.3s ease;
+        }
+
+        .login-btn:hover i {
+            transform: translateX(5px);
+        }
+
+        /* 消息区域 */
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            background: #f8f9fa;
+            background-image: radial-gradient(circle at 10px 10px, rgba(0,0,0,0.02) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: messageSlide 0.3s ease;
+        }
+
+        @keyframes messageSlide {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.system {
+            text-align: center;
+            margin: 15px 0;
+        }
+
+        .system-content {
+            display: inline-block;
+            padding: 8px 20px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 20px;
+            color: #666;
+            font-size: 13px;
+            /* backdrop-filter: blur(5px); */
+        }
+
+        .message.chat {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+            padding: 0 10px;
+        }
+
+        .message-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .message-username {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 18px;
+            border-radius: 20px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            font-size: 15px;
+            line-height: 1.5;
+            word-wrap: break-word;
+            margin-left: 45px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .message-bubble:hover {
+            transform: scale(1.02);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .message-actions {
+            display: flex;
+            gap: 10px;
+            margin-left: 45px;
+            margin-top: 5px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .message:hover .message-actions {
+            opacity: 1;
+        }
+
+        .action-btn {
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .action-btn:hover {
+            color: #4a90e2;
+            transform: scale(1.2);
+        }
+
+        .reaction-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: #f0f0f0;
+            border-radius: 15px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+
+        /* 输入区域 */
+        .typing-indicator {
+            padding: 10px 30px;
+            color: #666;
+            font-style: italic;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 3px;
+        }
+
+        .typing-dots span {
+            width: 4px;
+            height: 4px;
+            background: #4a90e2;
+            border-radius: 50%;
+            animation: typingBounce 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+
+        .input-area {
+            padding: 20px 30px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+        }
+
+        .message-input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .message-input {
+            width: 100%;
+            padding: 15px 50px 15px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 15px;
+            resize: none;
+            max-height: 100px;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .message-input:focus {
+            border-color: #4a90e2;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+            background: white;
+        }
+
+        .emoji-btn {
+            position: absolute;
+            right: 15px;
+            bottom: 12px;
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            font-size: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .emoji-btn:hover {
+            color: #4a90e2;
+            transform: scale(1.2);
+        }
+
+        .send-btn {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.3);
+        }
+
+        .send-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(74, 144, 226, 0.4);
+        }
+
+        .send-btn:disabled {
+            background: linear-gradient(135deg, #bdc3c7 0%, #95a5a6 100%);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Emoji 面板 */
+        .emoji-panel {
+            position: absolute;
+            bottom: 100%;
+            left: 30px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 -5px 30px rgba(0,0,0,0.2);
+            padding: 15px;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 10px;
+            max-width: 400px;
+            animation: slideUp 0.3s ease;
+            z-index: 100;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .emoji-item {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .emoji-item:hover {
+            background: #f0f0f0;
+            transform: scale(1.2);
+        }
+
+        /* 欢迎消息 */
+        .welcome-message {
+            text-align: center;
+            padding: 50px 20px;
+            color: #999;
+        }
+
+        .welcome-message i {
+            font-size: 60px;
+            margin-bottom: 20px;
+            color: #4a90e2;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-20px); }
+            60% { transform: translateY(-10px); }
+        }
+
+        .welcome-message h3 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        /* 滚动条美化 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .chat-wrapper {
+                flex-direction: column;
+                height: 100vh;
+                width: 100%;
+                border-radius: 0;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: 200px;
+            }
+
+            .user-list {
+                display: flex;
+                overflow-x: auto;
+            }
+
+            .user-item {
+                min-width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background-animation" id="background"></div>
+    
+    <div class="chat-wrapper">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h3><i class="fas fa-users"></i> 在线用户</h3>
+                <div class="online-count">
+                    <span id="onlineCount">0</span>
+                    <small>人</small>
+                </div>
+            </div>
+            <div class="user-list" id="userList"></div>
+        </div>
+
+        <!-- 主聊天区 -->
+        <div class="main-chat">
+            <div class="chat-header">
+                <div>
+                    <h2>
+                        <i class="fas fa-comments"></i>
+                        星河聊天室
+                    </h2>
+                    <p><i class="fas fa-globe"></i> 与全世界的人实时聊天</p>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalMessages">0</div>
+                        <div class="stat-label">总消息</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="activeUsers">0</div>
+                        <div class="stat-label">活跃</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 登录区域 -->
+            <div class="login-container" id="loginContainer">
+                <div class="login-box">
+                    <h3>
+                        <i class="fas fa-rocket"></i>
+                        加入聊天
+                    </h3>
+                    <div class="input-group">
+                        <label><i class="fas fa-user"></i> 你的昵称</label>
+                        <input type="text" id="username" placeholder="输入一个酷炫的昵称..." maxlength="20">
+                    </div>
+                    <button class="login-btn" onclick="joinChat()">
+                        <span>进入聊天室</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 消息区域 -->
+            <div class="messages-container" id="messages">
+                <div class="welcome-message">
+                    <i class="fas fa-hand-peace"></i>
+                    <h3>欢迎来到星河聊天室</h3>
+                    <p>输入昵称开始聊天吧！</p>
+                </div>
+            </div>
+
+            <!-- 输入区域 -->
+            <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <span id="typingText"></span>
+            </div>
+
+            <div class="input-area">
+                <div class="message-input-wrapper">
+                    <textarea 
+                        id="messageInput" 
+                        class="message-input" 
+                        placeholder="输入消息..." 
+                        disabled
+                        rows="1"
+                    ></textarea>
+                    <button class="emoji-btn" id="emojiBtn" onclick="toggleEmojiPanel()" disabled title="打开表情面板">
+                        <i class="far fa-smile"></i>
+                    </button>
+                    <div class="emoji-panel" id="emojiPanel" style="display: none;">
+                        <!-- Emoji 会通过JS动态生成 -->
+                    </div>
+                </div>
+                <button class="send-btn" id="sendButton" onclick="sendMessage()" disabled>
+                    <span>发送</span>
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket 连接
+        let ws = null;
+        let currentUsername = null;
+        let currentUserColor = null;
+        let typingTimeout = null;
+        let messageCount = 0;
+        let activeTypingUsers = new Map();
+
+        // 常用表情
+        const emojis = ['😊', '😂', '❤️', '👍', '🎉', '✨', '🌟', '⭐', 
+                       '🔥', '💯', '🤔', '😢', '😍', '🥳', '👋', '🙏',
+                       '🍕', '🎸', '🌈', '☀️', '🌙', '⭐', '⚡', '❄️'];
+
+        // 初始化背景动画
+        function initBackground() {
+            const bg = document.getElementById('background');
+            
+            // 创建星星
+            for (let i = 0; i < 50; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.width = Math.random() * 3 + 'px';
+                star.style.height = star.style.width;
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.animationDelay = Math.random() * 3 + 's';
+                bg.appendChild(star);
+            }
+            
+            // 创建浮动形状
+            const shapes = ['#FF6B6B', '#4ECDC4', '#45B7D1'];
+            for (let i = 0; i < 3; i++) {
+                const shape = document.createElement('div');
+                shape.className = 'floating-shape';
+                shape.style.width = Math.random() * 300 + 100 + 'px';
+                shape.style.height = shape.style.width;
+                shape.style.background = shapes[i];
+                shape.style.left = Math.random() * 100 + '%';
+                shape.style.top = Math.random() * 100 + '%';
+                shape.style.animationDelay = i * 2 + 's';
+                bg.appendChild(shape);
+            }
+        }
+
+        // 初始化表情面板
+        function initEmojiPanel() {
+            const panel = document.getElementById('emojiPanel');
+            emojis.forEach(emoji => {
+                const item = document.createElement('div');
+                item.className = 'emoji-item';
+                item.textContent = emoji;
+                item.onclick = () => insertEmoji(emoji);
+                panel.appendChild(item);
+            });
+        }
+
+        // 插入表情
+        function insertEmoji(emoji) {
+            const input = document.getElementById('messageInput');
+            input.value += emoji;
+            input.focus();
+            toggleEmojiPanel();
+        }
+
+        // 切换表情面板
+        function toggleEmojiPanel() {
+            const panel = document.getElementById('emojiPanel');
+            panel.style.display = panel.style.display === 'none' ? 'grid' : 'none';
+        }
+
+        // WebSocket 连接
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+            ws.onopen = () => {
+                console.log('✨ 已连接到聊天室');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                switch (data.type) {
+                    case 'history':
+                        displayHistory(data.messages);
+                        break;
+                    case 'chat':
+                        addMessage(data);
+                        messageCount++;
+                        updateStats();
+                        break;
+                    case 'system':
+                        addSystemMessage(data);
+                        break;
+                    case 'users':
+                        updateUserList(data.users);
+                        updateStats();
+                        break;
+                    case 'typing':
+                        handleTyping(data);
+                        break;
+                    case 'reaction':
+                        handleReaction(data);
+                        break;
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('连接断开，5秒后重连...');
+                setTimeout(connect, 5000);
+            };
+        }
+
+        // 加入聊天室
+        function joinChat() {
+            const usernameInput = document.getElementById('username');
+            const username = usernameInput.value.trim();
+            
+            if (!username) {
+                showNotification('请输入昵称', 'error');
+                return;
+            }
+
+            if (username.length < 2) {
+                showNotification('昵称至少2个字符', 'error');
+                return;
+            }
+
+            currentUsername = username;
+            
+            ws.send(JSON.stringify({
+                type: 'join',
+                username: username
+            }));
+
+            // 更新UI
+            document.getElementById('loginContainer').style.display = 'none';
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendButton').disabled = false;
+            document.getElementById('emojiBtn').disabled = false;
+            
+            showNotification('欢迎加入聊天室！', 'success');
+        }
+
+        // 发送消息
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+            
+            if (!content || !currentUsername) return;
+            
+            ws.send(JSON.stringify({
+                type: 'message',
+                content: content
+            }));
+            
+            input.value = '';
+            adjustTextareaHeight(input);
+        }
+
+        // 调整文本框高度
+        function adjustTextareaHeight(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
+        }
+
+        // 添加消息
+        function addMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            
+            // 移除欢迎消息
+            const welcomeMsg = messagesDiv.querySelector('.welcome-message');
+            if (welcomeMsg) {
+                welcomeMsg.remove();
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message chat`;
+            messageDiv.dataset.messageId = message.id;
+            
+            const avatar = message.username.charAt(0).toUpperCase();
+            const bubbleColor = message.color || '#4a90e2';
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <div class="message-avatar" style="background: ${bubbleColor}">
+                        ${avatar}
+                    </div>
+                    <span class="message-username" style="color: ${bubbleColor}">
+                        ${escapeHtml(message.username)}
+                    </span>
+                    <span class="message-time">${message.timestamp}</span>
+                </div>
+                <div class="message-bubble" style="border-left: 3px solid ${bubbleColor}">
+                    ${escapeHtml(message.content)}
+                </div>
+                <div class="message-actions">
+                    <button class="action-btn" onclick="addReaction('${message.id}', '👍')">
+                        <i class="far fa-thumbs-up"></i>
+                    </button>
+                    <button class="action-btn" onclick="addReaction('${message.id}', '❤️')">
+                        <i class="far fa-heart"></i>
+                    </button>
+                    <button class="action-btn" onclick="addReaction('${message.id}', '😂')">
+                        <i class="far fa-laugh"></i>
+                    </button>
+                </div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // 添加系统消息
+        function addSystemMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.innerHTML = `
+                <div class="system-content">
+                    <i class="fas fa-info-circle"></i>
+                    ${escapeHtml(message.content)}
+                    <span style="font-size: 11px; opacity: 0.7;">${message.timestamp}</span>
+                </div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // 显示消息历史
+        function displayHistory(messages) {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = '';
+            
+            if (messages.length === 0) {
+                messagesDiv.innerHTML = `
+                    <div class="welcome-message">
+                        <i class="fas fa-hand-peace"></i>
+                        <h3>欢迎来到星河聊天室</h3>
+                        <p>输入昵称开始聊天吧！</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            messages.forEach(message => {
+                if (message.type === 'system') {
+                    addSystemMessage(message);
+                } else {
+                    addMessage(message);
+                }
+            });
+            
+            messageCount = messages.length;
+            updateStats();
+        }
+
+        // 更新用户列表
+        function updateUserList(users) {
+            const userList = document.getElementById('userList');
+            const onlineCount = document.getElementById('onlineCount');
+            
+            onlineCount.textContent = users.length;
+            
+            userList.innerHTML = users.map(user => {
+                const avatar = user.username.charAt(0).toUpperCase();
+                return `
+                    <div class="user-item" onclick="mentionUser('${user.username}')">
+                        <div class="user-avatar" style="background: ${user.color}">
+                            ${avatar}
+                        </div>
+                        <div class="user-info">
+                            <div class="user-name">${escapeHtml(user.username)}</div>
+                            <div class="user-status">
+                                <i class="fas fa-circle"></i>
+                                在线
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 处理输入提示
+        function handleTyping(data) {
+            if (data.isTyping) {
+                activeTypingUsers.set(data.username, data.color);
+            } else {
+                activeTypingUsers.delete(data.username);
+            }
+            
+            updateTypingIndicator();
+        }
+
+        // 更新输入提示
+        function updateTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            const typingText = document.getElementById('typingText');
+            
+            if (activeTypingUsers.size > 0) {
+                const users = Array.from(activeTypingUsers.keys());
+                let text = '';
+                
+                if (users.length === 1) {
+                    text = `${users[0]} 正在输入...`;
+                } else if (users.length === 2) {
+                    text = `${users[0]} 和 ${users[1]} 正在输入...`;
+                } else {
+                    text = `${users.length} 个人正在输入...`;
+                }
+                
+                typingText.textContent = text;
+                indicator.style.display = 'flex';
+            } else {
+                indicator.style.display = 'none';
+            }
+        }
+
+        // 处理消息反应
+        function handleReaction(data) {
+            // 这里可以添加反应动画效果
+            console.log('Reaction:', data);
+        }
+
+        // 添加反应
+        function addReaction(messageId, reaction) {
+            if (!currentUsername) return;
+            
+            ws.send(JSON.stringify({
+                type: 'reaction',
+                messageId: messageId,
+                reaction: reaction
+            }));
+        }
+
+        // 提及用户
+        function mentionUser(username) {
+            const input = document.getElementById('messageInput');
+            input.value += `@${username} `;
+            input.focus();
+        }
+
+        // 显示通知
+        function showNotification(message, type = 'info') {
+            // 可以添加toast通知
+            console.log(message);
+        }
+
+        // 更新统计信息
+        function updateStats() {
+            document.getElementById('totalMessages').textContent = messageCount;
+            document.getElementById('activeUsers').textContent = document.getElementById('onlineCount').textContent;
+        }
+
+        // HTML转义
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // 事件监听
+        document.getElementById('messageInput').addEventListener('input', function(e) {
+            adjustTextareaHeight(this);
+            
+            if (!currentUsername) return;
+            
+            ws.send(JSON.stringify({
+                type: 'typing',
+                isTyping: true
+            }));
+            
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                ws.send(JSON.stringify({
+                    type: 'typing',
+                    isTyping: false
+                }));
+            }, 1000);
+        });
+
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // 点击其他地方关闭表情面板
+        document.addEventListener('click', (e) => {
+            const emojiBtn = document.getElementById('emojiBtn');
+            const emojiPanel = document.getElementById('emojiPanel');
+            
+            if (!emojiBtn.contains(e.target) && !emojiPanel.contains(e.target)) {
+                emojiPanel.style.display = 'none';
+            }
+        });
+
+        // 初始化
+        initBackground();
+        initEmojiPanel();
+        connect();
+    </script>
+</body>
+</html>
