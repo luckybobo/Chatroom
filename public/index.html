@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>✨ 星河聊天室 · 精美公共聊天室</title>
+    <title>聊天室</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         * {
@@ -739,9 +739,9 @@
                 <div>
                     <h2>
                         <i class="fas fa-comments"></i>
-                        星河聊天室
+                        聊天室
                     </h2>
-                    <p><i class="fas fa-globe"></i> 与全世界的人实时聊天</p>
+                    <p><i class="fas fa-globe"></i> 与全世界的人实时聊骚</p>
                 </div>
                 <div class="header-stats">
                     <div class="stat-item">
@@ -764,7 +764,7 @@
                     </h3>
                     <div class="input-group">
                         <label><i class="fas fa-user"></i> 你的昵称</label>
-                        <input type="text" id="username" placeholder="输入一个酷炫的昵称..." maxlength="20">
+                        <input type="text" id="username" placeholder="输入一个昵称..." maxlength="20">
                     </div>
                     <button class="login-btn" onclick="joinChat()">
                         <span>进入聊天室</span>
@@ -777,8 +777,8 @@
             <div class="messages-container" id="messages">
                 <div class="welcome-message">
                     <i class="fas fa-hand-peace"></i>
-                    <h3>欢迎来到星河聊天室</h3>
-                    <p>输入昵称开始聊天吧！</p>
+                    <h3>欢迎来到聊天室</h3>
+                    <p>输入昵称开始聊天</p>
                 </div>
             </div>
 
@@ -958,7 +958,7 @@
             document.getElementById('sendButton').disabled = false;
             document.getElementById('emojiBtn').disabled = false;
             
-            showNotification('欢迎加入聊天室！', 'success');
+            showNotification('欢迎加入！', 'success');
         }
 
         // 发送消息
@@ -1057,7 +1057,7 @@
                 messagesDiv.innerHTML = `
                     <div class="welcome-message">
                         <i class="fas fa-hand-peace"></i>
-                        <h3>欢迎来到星河聊天室</h3>
+                        <h3>欢迎来到聊天室</h3>
                         <p>输入昵称开始聊天吧！</p>
                     </div>
                 `;
