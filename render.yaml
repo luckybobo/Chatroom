@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: beautiful-chat-room
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18.17.0
+    healthCheckPath: /health
+    autoDeploy: true
