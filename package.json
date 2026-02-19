@@ -1,5 +1,5 @@
 {
-  "name": "werewolf-chat-room",
+  "name": "chat-room",
   "version": "1.0.0",
   "description": "chat with mic support",
   "main": "server.js",
