@@ -447,10 +447,10 @@ function setupConsoleCommands() {
         rl.prompt();
     });
 
-    rl.on('close', () => {
-        console.log('👋 Admin console closed');
-        process.exit(0);
-    });
+    // rl.on('close', () => {
+    //     console.log('👋 Admin console closed');
+    //     process.exit(0);
+    // });
 }
 
 // ========== 游戏逻辑函数 ==========
