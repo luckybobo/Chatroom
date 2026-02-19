@@ -1,7 +1,7 @@
 {
   "name": "werewolf-chat-room",
   "version": "1.0.0",
-  "description": "聊天室 with mic support",
+  "description": "chat with mic support",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
