@@ -2313,7 +2313,7 @@
                 if (isDead) userClass += ' dead';
                 
                 return `
-                    <div class="${userClass}" onclick="quickCommand('/vote @${user.username}')">
+                    <div class="${userClass}" onclick="quickCommand(' @${user.username}')">
                         <div class="user-avatar" style="background: ${user.color || '#4a90e2'}">
                             ${avatar}
                         </div>

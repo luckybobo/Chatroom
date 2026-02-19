@@ -94,9 +94,9 @@ const GAME_COMMANDS = {
 
 // 游戏时间配置
 const GAME_TIMES = {
-    NIGHT: 60000,     // 60秒
-    DAY: 90000,       // 90秒  
-    VOTE: 60000       // 60秒
+    NIGHT: 150000,     // 120秒
+    DAY: 180000,       // 90秒  
+    VOTE: 150000       // 60秒
 };
 
 // 生成随机颜色
