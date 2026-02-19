@@ -98,6 +98,16 @@ const GAME_TIMES = {
     DAY: 180000,       // 90秒  
     VOTE: 150000       // 60秒
 };
+// 全局错误处理
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    addSystemLog(`CRITICAL: Uncaught exception - ${error.message}`);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection:', reason);
+    addSystemLog(`CRITICAL: Unhandled rejection - ${reason}`);
+});
 
 // 生成随机颜色
 function getRandomColor() {
@@ -1092,271 +1102,466 @@ function checkAllNightActions() {
     
     return allActed;
 }
-
 // 处理夜间阶段结束
 function processNightPhase() {
-    addSystemLog(`NIGHT PHASE: Processing death results`);
-    
-    let deaths = [];
-    let deathMessages = [];
-    
-    // 处理女巫救人
-    if (gameState.savedTonight && gameState.killedTonight === gameState.savedTonight) {
+    try {
+        addSystemLog(`NIGHT PHASE: Processing death results`);
+        
+        let deaths = [];
+        let deathMessages = [];
+        let savedByWitch = false;
+        
+        // 安全检查：确保游戏状态有效
+        if (!gameState || !gameState.players) {
+            addSystemLog(`ERROR: Invalid game state in night phase`);
+            return;
+        }
+        
+        // 处理女巫救人
+        if (gameState.savedTonight && gameState.killedTonight === gameState.savedTonight) {
+            gameState.killedTonight = null;
+            savedByWitch = true;
+            deathMessages.push('💊 女巫使用了解药，有人被救了');
+            addSystemLog(`WITCH: Saved the victim`);
+        }
+        
+        // 处理女巫毒人
+        if (gameState.poisonedTonight) {
+            const poisonedPlayer = Array.from(gameState.players.values())
+                .find(p => p && p.userId === gameState.poisonedTonight);
+            if (poisonedPlayer) {
+                poisonedPlayer.isAlive = false;
+                deaths.push(poisonedPlayer);
+                deathMessages.push(`☠️ ${poisonedPlayer.username} 被女巫毒死了`);
+                addSystemLog(`DEATH: ${poisonedPlayer.username} (${poisonedPlayer.role}) was poisoned by witch`);
+            }
+        }
+        
+        // 处理狼人杀人
+        if (gameState.killedTonight) {
+            const killedPlayer = Array.from(gameState.players.values())
+                .find(p => p && p.userId === gameState.killedTonight);
+            if (killedPlayer) {
+                killedPlayer.isAlive = false;
+                deaths.push(killedPlayer);
+                deathMessages.push(`🔪 ${killedPlayer.username} 被狼人杀死了`);
+                addSystemLog(`DEATH: ${killedPlayer.username} (${killedPlayer.role}) was killed by werewolves`);
+            }
+        }
+        
+        // 广播死亡信息
+        if (deathMessages.length > 0) {
+            deathMessages.forEach(msg => {
+                if (msg) {
+                    broadcastMessage({
+                        type: 'gameEvent',
+                        content: msg
+                    });
+                }
+            });
+        } else {
+            broadcastMessage({
+                type: 'gameEvent',
+                content: '🌄 昨晚是平安夜，无人死亡'
+            });
+            addSystemLog(`NIGHT: Peaceful night, no one died`);
+        }
+        
+        // 检查游戏是否结束
+        const gameEnded = checkGameEnd();
+        if (gameEnded) {
+            addSystemLog(`GAME: Game ended after night phase`);
+            return;
+        }
+        
+        // 重置夜间行动记录
+        gameState.nightActions.clear();
         gameState.killedTonight = null;
-        deathMessages.push('💊 女巫使用了解药，有人被救了');
-        addSystemLog(`WITCH: Saved the victim`);
-    }
-    
-    // 处理女巫毒人
-    if (gameState.poisonedTonight) {
-        const poisonedPlayer = Array.from(gameState.players.values())
-            .find(p => p.userId === gameState.poisonedTonight);
-        if (poisonedPlayer) {
-            poisonedPlayer.isAlive = false;
-            deaths.push(poisonedPlayer);
-            deathMessages.push(`☠️ ${poisonedPlayer.username} 被女巫毒死了`);
-            addSystemLog(`DEATH: ${poisonedPlayer.username} (${poisonedPlayer.role}) was poisoned by witch`);
+        gameState.savedTonight = null;
+        gameState.poisonedTonight = null;
+        gameState.checkedTonight = null;
+        
+        // 重置玩家行动状态（只处理仍然存在的玩家）
+        if (gameState.players && gameState.players.size > 0) {
+            gameState.players.forEach((player, ws) => {
+                if (player) {
+                    player.hasActed = false;
+                    player.hasVoted = false;
+                }
+            });
         }
-    }
-    
-    // 处理狼人杀人
-    if (gameState.killedTonight) {
-        const killedPlayer = Array.from(gameState.players.values())
-            .find(p => p.userId === gameState.killedTonight);
-        if (killedPlayer) {
-            killedPlayer.isAlive = false;
-            deaths.push(killedPlayer);
-            deathMessages.push(`🔪 ${killedPlayer.username} 被狼人杀死了`);
-            addSystemLog(`DEATH: ${killedPlayer.username} (${killedPlayer.role}) was killed by werewolves`);
-        }
-    }
-    
-    // 广播死亡信息
-    if (deathMessages.length > 0) {
-        deathMessages.forEach(msg => {
-            sendGameMessage(msg);
+        
+        // 进入白天阶段
+        gameState.gamePhase = 'day';
+        gameState.phaseEndTime = Date.now() + GAME_TIMES.DAY;
+        startPhaseTimer();
+        
+        // 广播阶段变化
+        broadcastMessage({
+            type: 'phaseChange',
+            phase: 'day',
+            dayCount: gameState.dayCount
         });
-    } else {
-        sendGameMessage('🌄 昨晚是平安夜，无人死亡');
-        addSystemLog(`NIGHT: Peaceful night, no one died`);
+        
+        broadcastMessage({
+            type: 'gameEvent',
+            content: '☀️ 天亮了，大家开始讨论吧！'
+        });
+        
+        addSystemLog(`PHASE: Day ${gameState.dayCount} started`);
+        
+        // 更新游戏状态
+        if (gameState.players && gameState.players.size > 0) {
+            broadcastGameState();
+        }
+        
+    } catch (error) {
+        addSystemLog(`ERROR in processNightPhase: ${error.message}`);
+        console.error('Night phase error:', error);
+        
+        // 错误恢复：尝试重置游戏状态
+        try {
+            gameState.gamePhase = 'day';
+            gameState.phaseEndTime = Date.now() + GAME_TIMES.DAY;
+            startPhaseTimer();
+            broadcastMessage({
+                type: 'gameEvent',
+                content: '⚠️ 游戏出现错误，已自动恢复'
+            });
+        } catch (e) {
+            addSystemLog(`CRITICAL: Cannot recover from night phase error`);
+        }
     }
-    
-    // 检查游戏是否结束
-    const gameEnded = checkGameEnd();
-    if (gameEnded) return;
-    
-    // 重置夜间行动记录
-    gameState.nightActions.clear();
-    gameState.killedTonight = null;
-    gameState.savedTonight = null;
-    gameState.poisonedTonight = null;
-    gameState.checkedTonight = null;
-    
-    gameState.players.forEach(player => {
-        player.hasActed = false;
-        player.hasVoted = false;
-    });
-    
-    // 进入白天阶段
-    gameState.gamePhase = 'day';
-    gameState.phaseEndTime = Date.now() + GAME_TIMES.DAY;
-    startPhaseTimer();
-    
-    sendGameMessage(`☀️ 天亮了，第 ${gameState.dayCount} 天开始，大家开始讨论吧！`);
-    showAlivePlayers();
-    
-    addSystemLog(`PHASE: Day ${gameState.dayCount} started`);
-    broadcastGameState();
 }
 
 // 处理投票阶段
 function processVotePhase() {
-    const voteCount = new Map();
-    
-    gameState.votes.forEach((targetId, voterId) => {
-        const count = voteCount.get(targetId) || 0;
-        voteCount.set(targetId, count + 1);
-    });
-    
-    let maxVotes = 0;
-    let eliminatedId = null;
-    
-    voteCount.forEach((count, userId) => {
-        if (count > maxVotes) {
-            maxVotes = count;
-            eliminatedId = userId;
-        } else if (count === maxVotes) {
-            eliminatedId = null;
+    try {
+        addSystemLog(`VOTE PHASE: Processing vote results`);
+        
+        // 安全检查
+        if (!gameState || !gameState.players || gameState.players.size === 0) {
+            addSystemLog(`ERROR: Invalid game state in vote phase`);
+            return;
         }
-    });
-    
-    if (eliminatedId) {
-        const eliminated = Array.from(gameState.players.values()).find(p => p.userId === eliminatedId);
-        if (eliminated) {
-            eliminated.isAlive = false;
-            sendGameMessage(`🗳️ ${eliminated.username} 被投票放逐 (${maxVotes}票)`);
-            addSystemLog(`VOTE RESULT: ${eliminated.username} (${eliminated.role}) was eliminated by vote (${maxVotes} votes)`);
-            
-            // 猎人死亡可以开枪
-            if (eliminated.role === '猎人') {
-                sendGameMessage(`🏹 猎人 ${eliminated.username} 死亡，可以使用 /shoot @用户名 开枪带走一人`);
+        
+        const voteCount = new Map();
+        
+        gameState.votes.forEach((targetId, voterId) => {
+            if (targetId && voterId) {
+                const count = voteCount.get(targetId) || 0;
+                voteCount.set(targetId, count + 1);
             }
+        });
+        
+        let maxVotes = 0;
+        let eliminatedId = null;
+        let tie = false;
+        
+        voteCount.forEach((count, userId) => {
+            if (count > maxVotes) {
+                maxVotes = count;
+                eliminatedId = userId;
+                tie = false;
+            } else if (count === maxVotes) {
+                tie = true;
+                eliminatedId = null;
+            }
+        });
+        
+        if (eliminatedId && !tie) {
+            const eliminated = Array.from(gameState.players.values())
+                .find(p => p && p.userId === eliminatedId);
+            if (eliminated) {
+                eliminated.isAlive = false;
+                broadcastMessage({
+                    type: 'gameEvent',
+                    content: `🗳️ ${eliminated.username} 被投票放逐 (${maxVotes}票)`
+                });
+                addSystemLog(`VOTE RESULT: ${eliminated.username} (${eliminated.role}) was eliminated by vote (${maxVotes} votes)`);
+                
+                // 猎人死亡可以开枪
+                if (eliminated.role === '猎人') {
+                    broadcastMessage({
+                        type: 'gameEvent',
+                        content: `🏹 猎人 ${eliminated.username} 死亡，可以使用 /shoot @用户名 开枪带走一人`
+                    });
+                }
+            }
+        } else {
+            broadcastMessage({
+                type: 'gameEvent',
+                content: '🗳️ 平票，无人被放逐'
+            });
+            addSystemLog(`VOTE RESULT: Tie vote, no one eliminated`);
         }
-    } else {
-        sendGameMessage('🗳️ 平票，无人被放逐');
-        addSystemLog(`VOTE RESULT: Tie vote, no one eliminated`);
+        
+        // 检查游戏是否结束
+        const gameEnded = checkGameEnd();
+        if (gameEnded) {
+            addSystemLog(`GAME: Game ended after vote phase`);
+            return;
+        }
+        
+        // 重置投票记录
+        gameState.votes.clear();
+        
+        // 重置玩家投票状态
+        if (gameState.players && gameState.players.size > 0) {
+            gameState.players.forEach((player, ws) => {
+                if (player) {
+                    player.hasVoted = false;
+                }
+            });
+        }
+        
+        // 进入下一夜
+        gameState.dayCount++;
+        gameState.gamePhase = 'night';
+        gameState.phaseEndTime = Date.now() + GAME_TIMES.NIGHT;
+        startPhaseTimer();
+        
+        broadcastMessage({
+            type: 'phaseChange',
+            phase: 'night',
+            dayCount: gameState.dayCount
+        });
+        
+        broadcastMessage({
+            type: 'gameEvent',
+            content: '🌙 天黑请闭眼，第 ' + gameState.dayCount + ' 天夜晚'
+        });
+        
+        addSystemLog(`PHASE: Night ${gameState.dayCount} started`);
+        
+        // 私聊通知各角色（只通知存活的玩家）
+        if (gameState.players && gameState.players.size > 0) {
+            gameState.players.forEach((player, ws) => {
+                if (player && player.isAlive && ws && ws.readyState === WebSocket.OPEN) {
+                    let instruction = '';
+                    switch(player.role) {
+                        case '狼人':
+                            instruction = '🐺 你可以使用 /kill @用户名 杀死一名玩家';
+                            break;
+                        case '预言家':
+                            instruction = '🔮 你可以使用 /check @用户名 查验一名玩家的身份';
+                            break;
+                        case '女巫':
+                            instruction = '🧪 你可以使用 /save @用户名 救人，/poison @用户名 毒人，或 /skip 跳过';
+                            break;
+                    }
+                    if (instruction) {
+                        try {
+                            ws.send(JSON.stringify({
+                                type: 'private',
+                                content: instruction
+                            }));
+                        } catch (e) {
+                            addSystemLog(`ERROR: Failed to send private message to ${player.username}`);
+                        }
+                    }
+                }
+            });
+        }
+        
+        broadcastGameState();
+        
+    } catch (error) {
+        addSystemLog(`ERROR in processVotePhase: ${error.message}`);
+        console.error('Vote phase error:', error);
+        
+        // 错误恢复
+        try {
+            gameState.gamePhase = 'night';
+            gameState.phaseEndTime = Date.now() + GAME_TIMES.NIGHT;
+            startPhaseTimer();
+            broadcastMessage({
+                type: 'gameEvent',
+                content: '⚠️ 投票阶段出现错误，已自动进入夜晚'
+            });
+        } catch (e) {
+            addSystemLog(`CRITICAL: Cannot recover from vote phase error`);
+        }
     }
-    
-    // 检查游戏是否结束
-    const gameEnded = checkGameEnd();
-    if (gameEnded) return;
-    
-    // 重置投票记录
-    gameState.votes.clear();
-    gameState.players.forEach(player => {
-        player.hasVoted = false;
-    });
-    
-    // 进入下一夜
-    gameState.dayCount++;
-    gameState.gamePhase = 'night';
-    gameState.phaseEndTime = Date.now() + GAME_TIMES.NIGHT;
-    startPhaseTimer();
-    
-    sendGameMessage(`🌙 天黑请闭眼，第 ${gameState.dayCount} 天夜晚`);
-    
-    addSystemLog(`PHASE: Night ${gameState.dayCount} started`);
-    
-    // 私聊通知各角色
-    gameState.players.forEach((player, ws) => {
-        if (player.isAlive) {
-            let instruction = '';
-            switch(player.role) {
-                case '狼人':
-                    instruction = '🐺 你可以使用 /kill @用户名 杀死一名玩家';
-                    break;
-                case '预言家':
-                    instruction = '🔮 你可以使用 /check @用户名 查验一名玩家的身份';
-                    break;
-                case '女巫':
-                    instruction = '🧪 你可以使用 /save @用户名 救人，/poison @用户名 毒人，或 /skip 跳过';
-                    break;
-            }
-            if (instruction) {
-                ws.send(JSON.stringify({
-                    type: 'private',
-                    content: instruction
-                }));
-            }
-        }
-    });
-    
-    broadcastGameState();
 }
-
 // 检查游戏是否结束
 function checkGameEnd() {
-    const alivePlayers = Array.from(gameState.players.values()).filter(p => p.isAlive);
-    const aliveWolves = alivePlayers.filter(p => p.role === '狼人').length;
-    
-    if (aliveWolves === 0) {
-        endGame('好人阵营');
-        return true;
+    try {
+        if (!gameState || !gameState.players || gameState.players.size === 0) {
+            return false;
+        }
+        
+        const alivePlayers = Array.from(gameState.players.values()).filter(p => p && p.isAlive);
+        
+        if (alivePlayers.length === 0) {
+            endGame('无人存活');
+            return true;
+        }
+        
+        const aliveWolves = alivePlayers.filter(p => p && p.role === '狼人').length;
+        
+        if (aliveWolves === 0) {
+            endGame('好人阵营');
+            return true;
+        }
+        
+        if (aliveWolves >= alivePlayers.length - aliveWolves) {
+            endGame('狼人阵营');
+            return true;
+        }
+        
+        return false;
+        
+    } catch (error) {
+        addSystemLog(`ERROR in checkGameEnd: ${error.message}`);
+        return false;
     }
-    
-    if (aliveWolves >= alivePlayers.length - aliveWolves) {
-        endGame('狼人阵营');
-        return true;
-    }
-    
-    return false;
 }
-
 // 结束游戏
 function endGame(winner) {
-    gameState.isPlaying = false;
-    gameState.gamePhase = 'ended';
-    
-    if (gameState.phaseTimer) {
-        clearInterval(gameState.phaseTimer);
-        gameState.phaseTimer = null;
+    try {
+        gameState.isPlaying = false;
+        gameState.gamePhase = 'ended';
+        
+        if (gameState.phaseTimer) {
+            clearInterval(gameState.phaseTimer);
+            gameState.phaseTimer = null;
+        }
+        
+        // 收集所有玩家信息
+        const players = [];
+        if (gameState.players && gameState.players.size > 0) {
+            gameState.players.forEach((p, ws) => {
+                if (p) {
+                    players.push({
+                        username: p.username,
+                        role: p.role || '未知',
+                        isAlive: p.isAlive || false
+                    });
+                }
+            });
+        }
+        
+        addSystemLog(`GAME OVER: ${winner} wins!`);
+        
+        broadcastMessage({
+            type: 'gameEnd',
+            winner: winner,
+            players: players
+        });
+        
+        broadcastMessage({
+            type: 'gameEvent',
+            content: `🎉 游戏结束，${winner}获胜！`
+        });
+        
+        // 延迟一点再广播游戏状态，确保消息顺序
+        setTimeout(() => {
+            try {
+                broadcastGameState();
+            } catch (e) {
+                addSystemLog(`ERROR: Failed to broadcast final game state`);
+            }
+        }, 1000);
+        
+    } catch (error) {
+        addSystemLog(`ERROR in endGame: ${error.message}`);
+        console.error('End game error:', error);
     }
-    
-    const players = Array.from(gameState.players.values()).map(p => ({
-        username: p.username,
-        role: p.role,
-        isAlive: p.isAlive
-    }));
-    
-    addSystemLog(`GAME OVER: ${winner} wins!`);
-    
-    sendGameMessage(`🎉 游戏结束，${winner}获胜！`);
-    sendGameMessage('📊 最终身份：');
-    
-    players.forEach(p => {
-        sendGameMessage(`${p.username} - ${p.role} - ${p.isAlive ? '😊存活' : '💀死亡'}`);
-    });
-    
-    broadcastGameState();
 }
-
 // 开始阶段计时器
 function startPhaseTimer() {
-    if (gameState.phaseTimer) {
-        clearInterval(gameState.phaseTimer);
-    }
-    
-    gameState.phaseTimer = setInterval(() => {
-        const now = Date.now();
-        const remaining = Math.max(0, Math.floor((gameState.phaseEndTime - now) / 1000));
-        
-        // 每10秒广播一次剩余时间
-        if (remaining % 10 === 0 && remaining > 0) {
-            sendGameMessage(`⏱️ 剩余时间: ${Math.floor(remaining / 60)}分${remaining % 60}秒`);
-        }
-        
-        if (now >= gameState.phaseEndTime) {
+    try {
+        if (gameState.phaseTimer) {
             clearInterval(gameState.phaseTimer);
-            
-            if (gameState.gamePhase === 'night') {
-                addSystemLog(`PHASE: Night time expired`);
-                sendGameMessage('⏰ 夜晚时间到，强制进入白天');
-                
-                gameState.players.forEach((player, ws) => {
-                    if (player.isAlive && !player.hasActed && 
-                        (player.role === '狼人' || player.role === '预言家' || player.role === '女巫')) {
-                        player.hasActed = true;
-                    }
-                });
-                
-                processNightPhase();
-                
-            } else if (gameState.gamePhase === 'day') {
-                addSystemLog(`PHASE: Day time expired`);
-                gameState.gamePhase = 'vote';
-                gameState.phaseEndTime = Date.now() + GAME_TIMES.VOTE;
-                startPhaseTimer();
-                
-                sendGameMessage('🗳️ 讨论时间到，进入投票阶段');
-                sendGameMessage('💡 使用 /vote @用户名 进行投票');
-                
-                broadcastGameState();
-                addSystemLog(`PHASE: Vote started (Day ${gameState.dayCount})`);
-                
-            } else if (gameState.gamePhase === 'vote') {
-                addSystemLog(`PHASE: Vote time expired`);
-                
-                const alivePlayers = Array.from(gameState.players.values()).filter(p => p.isAlive);
-                alivePlayers.forEach(player => {
-                    if (!player.hasVoted) {
-                        player.hasVoted = true;
-                    }
-                });
-                
-                processVotePhase();
-            }
+            gameState.phaseTimer = null;
         }
-    }, 1000);
+        
+        gameState.phaseTimer = setInterval(() => {
+            try {
+                const now = Date.now();
+                const remaining = Math.max(0, Math.floor((gameState.phaseEndTime - now) / 1000));
+                
+                // 每10秒广播一次剩余时间
+                if (remaining % 10 === 0 && remaining > 0) {
+                    broadcastMessage({
+                        type: 'gameEvent',
+                        content: `⏱️ 剩余时间: ${Math.floor(remaining / 60)}分${remaining % 60}秒`
+                    });
+                }
+                
+                if (now >= gameState.phaseEndTime) {
+                    // 清除当前定时器
+                    if (gameState.phaseTimer) {
+                        clearInterval(gameState.phaseTimer);
+                        gameState.phaseTimer = null;
+                    }
+                    
+                    if (gameState.gamePhase === 'night') {
+                        addSystemLog(`PHASE: Night time expired`);
+                        
+                        // 标记所有未行动的角色为已行动
+                        if (gameState.players && gameState.players.size > 0) {
+                            gameState.players.forEach((player, ws) => {
+                                if (player && player.isAlive && !player.hasActed && 
+                                    (player.role === '狼人' || player.role === '预言家' || player.role === '女巫')) {
+                                    player.hasActed = true;
+                                }
+                            });
+                        }
+                        
+                        processNightPhase();
+                        
+                    } else if (gameState.gamePhase === 'day') {
+                        addSystemLog(`PHASE: Day time expired`);
+                        gameState.gamePhase = 'vote';
+                        gameState.phaseEndTime = Date.now() + GAME_TIMES.VOTE;
+                        startPhaseTimer();
+                        
+                        broadcastMessage({
+                            type: 'phaseChange',
+                            phase: 'vote',
+                            dayCount: gameState.dayCount
+                        });
+                        
+                        broadcastMessage({
+                            type: 'gameEvent',
+                            content: '🗳️ 讨论时间到，进入投票阶段'
+                        });
+                        
+                        broadcastMessage({
+                            type: 'gameEvent',
+                            content: '💡 使用 /vote @用户名 进行投票'
+                        });
+                        
+                        broadcastGameState();
+                        addSystemLog(`PHASE: Vote started (Day ${gameState.dayCount})`);
+                        
+                    } else if (gameState.gamePhase === 'vote') {
+                        addSystemLog(`PHASE: Vote time expired`);
+                        
+                        if (gameState.players && gameState.players.size > 0) {
+                            const alivePlayers = Array.from(gameState.players.values()).filter(p => p && p.isAlive);
+                            alivePlayers.forEach(player => {
+                                if (player && !player.hasVoted) {
+                                    player.hasVoted = true;
+                                }
+                            });
+                        }
+                        
+                        processVotePhase();
+                    }
+                }
+            } catch (timerError) {
+                addSystemLog(`ERROR in timer interval: ${timerError.message}`);
+                console.error('Timer interval error:', timerError);
+            }
+        }, 1000);
+        
+    } catch (error) {
+        addSystemLog(`ERROR in startPhaseTimer: ${error.message}`);
+        console.error('Timer error:', error);
+    }
 }
 
 // ========== 管理员功能 ==========
