@@ -1,25 +1,17 @@
 {
-  "name": "beautiful-chat-room",
-  "version": "2.0.1",
-  "description": "一个稳定的公共聊天室",
+  "name": "werewolf-chat-room",
+  "version": "1.0.0",
+  "description": "聊天室 with mic support",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "deploy": "pm2 start server.js --name chat-room",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "ws": "^8.14.2"
+    "express": "^4.22.1",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  },
-  "engines": {
-    "node": ">=16.0.0"
-  },
-  "keywords": ["chat", "websocket", "real-time"],
-  "author": "",
-  "license": "MIT"
+  }
 }
