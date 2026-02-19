@@ -3,17 +3,21 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const crypto = require('crypto');
-const readline = require('readline');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// 管理员密码配置
+const ADMIN_PASSWORD = '123456';
+
 // 存储在线用户
-const users = new Map(); // ws -> { username, color, id, ip, isMuted }
+const users = new Map(); // ws -> { username, color, id, ip, isMuted, isAdmin }
+const bannedIPs = new Set(); // 存储被封禁的IP地址
 const messageHistory = [];
 const recalledMessages = new Set(); // 存储已撤回的消息ID
-const MAX_HISTORY = 100;
+const MAX_HISTORY = 200;
+const systemLogs = []; // 存储系统日志，供前端终端显示
 
 // 游戏状态
 const gameState = {
@@ -36,46 +40,63 @@ const gameState = {
 const ROLE_CONFIG = {
     '狼人': { 
         count: 2, 
-        description: '每晚可以杀死一名玩家',
+        description: '每晚可以杀死一名玩家，指令: /kill @用户名',
         emoji: '🐺',
         nightAction: true,
         team: 'werewolf'
     },
     '预言家': { 
         count: 1, 
-        description: '每晚可以查验一名玩家的身份',
+        description: '每晚可以查验一名玩家的身份，指令: /check @用户名',
         emoji: '🔮',
         nightAction: true,
         team: 'villager'
     },
     '女巫': { 
         count: 1, 
-        description: '有一瓶解药和一瓶毒药，每晚只能使用一瓶',
+        description: '有一瓶解药和一瓶毒药，指令: /save @用户名 或 /poison @用户名 或 /skip',
         emoji: '🧪',
         nightAction: true,
         team: 'villager'
     },
     '猎人': { 
         count: 1, 
-        description: '死亡时可以开枪带走一人',
+        description: '死亡时可以开枪带走一人，指令: /shoot @用户名',
         emoji: '🏹',
         nightAction: false,
         team: 'villager'
     },
     '平民': { 
         count: 3, 
-        description: '白天参与投票，找出狼人',
+        description: '白天参与投票，找出狼人，指令: /vote @用户名',
         emoji: '👨',
         nightAction: false,
         team: 'villager'
     }
 };
 
+// 游戏指令列表
+const GAME_COMMANDS = {
+    'join': '加入游戏',
+    'leave': '离开游戏',
+    'start': '开始游戏（房主）',
+    'kill': '[@用户名] 狼人杀人',
+    'check': '[@用户名] 预言家查验',
+    'save': '[@用户名] 女巫救人',
+    'poison': '[@用户名] 女巫毒人',
+    'skip': '女巫跳过',
+    'shoot': '[@用户名] 猎人开枪',
+    'vote': '[@用户名] 投票放逐',
+    'players': '查看存活玩家',
+    'roles': '查看剩余角色',
+    'help': '查看帮助'
+};
+
 // 游戏时间配置
 const GAME_TIMES = {
-    NIGHT: 30000,     // 30秒
-    DAY: 45000,       // 45秒  
-    VOTE: 20000       // 20秒
+    NIGHT: 60000,     // 60秒
+    DAY: 90000,       // 90秒  
+    VOTE: 60000       // 60秒
 };
 
 // 生成随机颜色
@@ -102,14 +123,12 @@ function getClientIp(req) {
 // 静态文件服务
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 日志函数 - 控制台输出使用英文
-function logMessage(level, message, data = null) {
+// 添加系统日志
+function addSystemLog(message) {
     const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `[${timestamp}] ${level}: ${message}`;
-    if (data) {
-        console.log(logEntry, data);
-    } else {
-        console.log(logEntry);
+    systemLogs.push(`[${timestamp}] ${message}`);
+    if (systemLogs.length > 200) {
+        systemLogs.shift();
     }
 }
 
@@ -130,7 +149,8 @@ function broadcastUsers() {
         color: user.color,
         id: user.id,
         online: true,
-        isMuted: user.isMuted || false
+        isMuted: user.isMuted || false,
+        isAdmin: user.isAdmin || false
     }));
     
     broadcastMessage({
@@ -139,14 +159,15 @@ function broadcastUsers() {
     });
 }
 
-// 广播游戏状态（不包含角色信息）
+// 广播游戏状态
 function broadcastGameState() {
     const players = Array.from(gameState.players.entries()).map(([ws, player]) => ({
         username: player.username,
         userId: player.userId,
         isAlive: player.isAlive !== false,
         hasVoted: player.hasVoted || false,
-        hasActed: player.hasActed || false
+        hasActed: player.hasActed || false,
+        role: player.role || null
     }));
     
     broadcastMessage({
@@ -156,312 +177,708 @@ function broadcastGameState() {
         hostId: gameState.hostId,
         playerCount: gameState.players.size,
         gamePhase: gameState.gamePhase,
-        dayCount: gameState.dayCount
+        dayCount: gameState.dayCount,
+        phaseEndTime: gameState.phaseEndTime
     });
 }
 
-// ========== 管理员功能 ==========
-
-// 获取所有用户列表
-function listUsers() {
-    console.log('\n📋 Current online users:');
-    console.log('='.repeat(80));
-    console.log('ID'.padEnd(10) + 'Username'.padEnd(15) + 'IP'.padEnd(20) + 'Status'.padEnd(15) + 'Game Status');
-    console.log('-'.repeat(80));
-    
-    users.forEach((user, ws) => {
-        const isInGame = gameState.players.has(ws);
-        const status = [];
-        if (user.isMuted) status.push('🔇Muted');
-        if (isInGame) status.push('🎮In Game');
-        if (status.length === 0) status.push('✅Normal');
-        
-        const gameStatus = isInGame ? (gameState.players.get(ws).role || 'Not Assigned') : 'Not in Game';
-        
-        console.log(
-            user.id.substring(0, 8).padEnd(10) + 
-            user.username.padEnd(15) + 
-            user.ip.padEnd(20) + 
-            status.join(',').padEnd(15) + 
-            gameStatus
-        );
-    });
-    console.log('='.repeat(80) + '\n');
-}
-
-// 禁言用户
-function muteUser(targetUsername, reason = '管理员操作') {
-    let targetWs = null;
-    let targetUser = null;
-    
-    users.forEach((user, ws) => {
-        if (user.username === targetUsername) {
-            targetWs = ws;
-            targetUser = user;
-        }
-    });
-    
-    if (!targetWs) {
-        console.log(`❌ User ${targetUsername} does not exist`);
-        return false;
-    }
-    
-    targetUser.isMuted = true;
-    
-    targetWs.send(JSON.stringify({
-        type: 'system',
-        content: `🔇 你已被管理员禁言，原因: ${reason}`
-    }));
-    
+// 发送系统消息到聊天
+function sendGameMessage(content, type = 'system') {
     broadcastMessage({
         type: 'system',
-        content: `🔇 管理员将 ${targetUsername} 禁言，原因: ${reason}`
+        content: `🎮 ${content}`,
+        timestamp: new Date().toLocaleTimeString()
     });
-    
-    logMessage('👮 Admin Action', `Muted ${targetUsername}, reason: ${reason}`);
-    broadcastUsers();
-    
-    return true;
-}
-
-// 取消禁言
-function unmuteUser(targetUsername) {
-    let targetWs = null;
-    let targetUser = null;
-    
-    users.forEach((user, ws) => {
-        if (user.username === targetUsername) {
-            targetWs = ws;
-            targetUser = user;
-        }
-    });
-    
-    if (!targetWs) {
-        console.log(`❌ User ${targetUsername} does not exist`);
-        return false;
-    }
-    
-    targetUser.isMuted = false;
-    
-    targetWs.send(JSON.stringify({
-        type: 'system',
-        content: `🔊 你已被管理员取消禁言`
-    }));
-    
-    broadcastMessage({
-        type: 'system',
-        content: `🔊 管理员取消了 ${targetUsername} 的禁言`
-    });
-    
-    logMessage('👮 Admin Action', `Unmuted ${targetUsername}`);
-    broadcastUsers();
-    
-    return true;
-}
-
-// 撤回消息
-function recallMessage(messageId, reason = '管理员操作') {
-    if (recalledMessages.has(messageId)) {
-        console.log(`❌ Message ${messageId} already recalled`);
-        return false;
-    }
-    
-    const messageIndex = messageHistory.findIndex(m => m.id === messageId);
-    
-    if (messageIndex === -1) {
-        console.log(`❌ Message ${messageId} not found`);
-        return false;
-    }
-    
-    const message = messageHistory[messageIndex];
-    recalledMessages.add(messageId);
-    messageHistory.splice(messageIndex, 1);
-    
-    broadcastMessage({
-        type: 'messageRecalled',
-        messageId: messageId,
-        username: message.username,
-        content: `⚠️ 管理员撤回了一条消息: ${reason}`
-    });
-    
-    logMessage('👮 Admin Action', `Recalled message ${messageId} from ${message.username}, reason: ${reason}`);
-    
-    return true;
-}
-
-// 踢出用户
-function kickUser(targetUsername, reason = '管理员操作') {
-    let targetWs = null;
-    let targetUser = null;
-    
-    users.forEach((user, ws) => {
-        if (user.username === targetUsername) {
-            targetWs = ws;
-            targetUser = user;
-        }
-    });
-    
-    if (!targetWs) {
-        console.log(`❌ User ${targetUsername} does not exist`);
-        return false;
-    }
-    
-    targetWs.send(JSON.stringify({
-        type: 'kicked',
-        content: `你已被管理员踢出聊天室，原因: ${reason}`
-    }));
-    
-    broadcastMessage({
-        type: 'system',
-        content: `👢 管理员将 ${targetUsername} 踢出聊天室，原因: ${reason}`
-    });
-    
-    setTimeout(() => {
-        targetWs.close();
-    }, 1000);
-    
-    logMessage('👮 Admin Action', `Kicked ${targetUsername}, reason: ${reason}`);
-    
-    return true;
-}
-
-// 显示帮助信息
-function showAdminHelp() {
-    console.log('\n📚 Admin Commands:');
-    console.log('='.repeat(80));
-    console.log('list                       - Show all online users');
-    console.log('mute <username> [reason]   - Mute a user');
-    console.log('unmute <username>          - Unmute a user');
-    console.log('recall <messageId> [reason] - Recall a message');
-    console.log('kick <username> [reason]   - Kick a user');
-    console.log('history                    - View recent 20 messages');
-    console.log('help                       - Show this help');
-    console.log('clear                      - Clear screen');
-    console.log('exit                       - Exit program');
-    console.log('='.repeat(80) + '\n');
-}
-
-// 清屏函数
-function clearScreen() {
-    console.clear();
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`✨ Werewolf Chat Room Server - Admin Console`);
-    console.log(`📡 Listening on port: ${PORT}`);
-    console.log(`👥 Online users: ${users.size}`);
-    console.log(`🎮 Game in progress: ${gameState.isPlaying ? 'Yes' : 'No'}`);
-    console.log(`${'='.repeat(80)}\n`);
-}
-
-// 设置终端命令处理
-function setupConsoleCommands() {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-        prompt: 'admin> '
-    });
-
-    rl.prompt();
-
-    rl.on('line', (line) => {
-        const input = line.trim();
-        const parts = input.split(' ');
-        const command = parts[0].toLowerCase();
-        const args = parts.slice(1);
-
-        switch (command) {
-            case 'list':
-                listUsers();
-                break;
-                
-            case 'mute':
-                if (args.length < 1) {
-                    console.log('❌ Usage: mute <username> [reason]');
-                } else {
-                    const username = args[0];
-                    const reason = args.slice(1).join(' ') || '管理员操作';
-                    muteUser(username, reason);
-                }
-                break;
-                
-            case 'unmute':
-                if (args.length < 1) {
-                    console.log('❌ Usage: unmute <username>');
-                } else {
-                    unmuteUser(args[0]);
-                }
-                break;
-                
-            case 'recall':
-                if (args.length < 1) {
-                    console.log('❌ Usage: recall <messageId> [reason]');
-                } else {
-                    const messageId = args[0];
-                    const reason = args.slice(1).join(' ') || '管理员操作';
-                    recallMessage(messageId, reason);
-                }
-                break;
-                
-            case 'kick':
-                if (args.length < 1) {
-                    console.log('❌ Usage: kick <username> [reason]');
-                } else {
-                    const username = args[0];
-                    const reason = args.slice(1).join(' ') || '管理员操作';
-                    kickUser(username, reason);
-                }
-                break;
-                
-            case 'history':
-                console.log('\n📜 Recent messages:');
-                console.log('='.repeat(80));
-                if (messageHistory.length === 0) {
-                    console.log('No messages');
-                } else {
-                    messageHistory.slice(-20).forEach(msg => {
-                        console.log(`[${msg.timestamp}] ${msg.username.padEnd(10)} | ID: ${msg.id} | ${msg.content}`);
-                    });
-                }
-                console.log('='.repeat(80) + '\n');
-                break;
-                
-            case 'help':
-                showAdminHelp();
-                break;
-                
-            case 'clear':
-                clearScreen();
-                break;
-                
-            case 'exit':
-                console.log('👋 Shutting down server...');
-                process.exit(0);
-                break;
-                
-            default:
-                if (command) {
-                    console.log(`❌ Unknown command: ${command}`);
-                    showAdminHelp();
-                }
-        }
-
-        rl.prompt();
-    });
-
-    // rl.on('close', () => {
-    //     console.log('👋 Admin console closed');
-    //     process.exit(0);
-    // });
 }
 
 // ========== 游戏逻辑函数 ==========
 
+// 解析指令
+function parseCommand(message) {
+    if (!message.startsWith('/')) return null;
+    
+    const parts = message.slice(1).split(' ');
+    const cmd = parts[0].toLowerCase();
+    const args = parts.slice(1);
+    
+    return { cmd, args };
+}
+
+// 提取@用户名
+function extractMention(text) {
+    const match = text.match(/@(\S+)/);
+    return match ? match[1] : null;
+}
+
+// 根据用户名查找玩家
+function findPlayerByUsername(username) {
+    for (const [ws, player] of gameState.players.entries()) {
+        if (player.username === username) {
+            return { ws, player };
+        }
+    }
+    return null;
+}
+
+// 处理游戏指令
+function handleGameCommand(ws, userData, cmd, args) {
+    if (!gameState.isPlaying && cmd !== 'join' && cmd !== 'leave' && cmd !== 'start' && cmd !== 'players') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 游戏尚未开始'
+        }));
+        return;
+    }
+
+    const player = gameState.players.get(ws);
+    
+    switch(cmd) {
+        case 'join':
+            handleJoinGame(ws, userData);
+            break;
+            
+        case 'leave':
+            handleLeaveGame(ws, userData);
+            break;
+            
+        case 'start':
+            handleStartGame(ws, userData);
+            break;
+            
+        case 'kill':
+            handleKill(ws, player, args);
+            break;
+            
+        case 'check':
+            handleCheck(ws, player, args);
+            break;
+            
+        case 'save':
+            handleSave(ws, player, args);
+            break;
+            
+        case 'poison':
+            handlePoison(ws, player, args);
+            break;
+            
+        case 'skip':
+            handleSkip(ws, player);
+            break;
+            
+        case 'shoot':
+            handleShoot(ws, player, args);
+            break;
+            
+        case 'vote':
+            handleVote(ws, player, args);
+            break;
+            
+        case 'players':
+            showAlivePlayers(ws);
+            break;
+            
+        case 'roles':
+            showRemainingRoles(ws);
+            break;
+            
+        case 'help':
+            showGameHelp(ws);
+            break;
+            
+        default:
+            ws.send(JSON.stringify({
+                type: 'system',
+                content: `❌ 未知指令: /${cmd}，输入 /help 查看可用指令`
+            }));
+    }
+}
+
+// 加入游戏
+function handleJoinGame(ws, userData) {
+    if (gameState.isPlaying) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 游戏已经开始，无法加入'
+        }));
+        return;
+    }
+    
+    if (gameState.players.has(ws)) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经在游戏中'
+        }));
+        return;
+    }
+    
+    if (gameState.players.size >= 8) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 游戏人数已满（最多8人）'
+        }));
+        return;
+    }
+    
+    gameState.players.set(ws, {
+        username: userData.username,
+        userId: userData.id,
+        role: null,
+        isAlive: true,
+        hasVoted: false,
+        hasActed: false,
+        ip: userData.ip
+    });
+    
+    if (gameState.players.size === 1) {
+        gameState.hostId = userData.id;
+    }
+    
+    sendGameMessage(`👤 ${userData.username} 加入了游戏 (${gameState.players.size}/8)`);
+    addSystemLog(`GAME: ${userData.username} joined the game`);
+    
+    broadcastGameState();
+}
+
+// 离开游戏
+function handleLeaveGame(ws, userData) {
+    if (gameState.isPlaying) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 游戏进行中，无法离开'
+        }));
+        return;
+    }
+    
+    if (!gameState.players.has(ws)) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你不在游戏中'
+        }));
+        return;
+    }
+    
+    gameState.players.delete(ws);
+    
+    if (gameState.hostId === userData.id && gameState.players.size > 0) {
+        const firstPlayer = Array.from(gameState.players.entries())[0];
+        if (firstPlayer) {
+            const playerData = gameState.players.get(firstPlayer[0]);
+            gameState.hostId = playerData.userId;
+            sendGameMessage(`👑 房主转移给 ${playerData.username}`);
+        }
+    }
+    
+    sendGameMessage(`👤 ${userData.username} 离开了游戏 (${gameState.players.size}/8)`);
+    addSystemLog(`GAME: ${userData.username} left the game`);
+    
+    broadcastGameState();
+}
+
+// 开始游戏
+function handleStartGame(ws, userData) {
+    if (gameState.isPlaying) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 游戏已经开始'
+        }));
+        return;
+    }
+    
+    if (userData.id !== gameState.hostId) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只有房主可以开始游戏'
+        }));
+        return;
+    }
+    
+    if (gameState.players.size < 5) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 至少需要5名玩家才能开始游戏'
+        }));
+        return;
+    }
+    
+    startGame();
+}
+
+// 狼人杀人
+function handleKill(ws, player, args) {
+    if (!player || !player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经死亡，无法行动'
+        }));
+        return;
+    }
+    
+    if (player.role !== '狼人') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只有狼人可以杀人'
+        }));
+        return;
+    }
+    
+    if (gameState.gamePhase !== 'night') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只能在夜晚杀人'
+        }));
+        return;
+    }
+    
+    if (player.hasActed) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经行动过了'
+        }));
+        return;
+    }
+    
+    const targetName = args.join(' ').replace('@', '');
+    if (!targetName) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 请指定要击杀的目标，例如: /kill @张三'
+        }));
+        return;
+    }
+    
+    const target = findPlayerByUsername(targetName);
+    if (!target) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ 找不到玩家: ${targetName}`
+        }));
+        return;
+    }
+    
+    if (!target.player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ ${targetName} 已经死亡`
+        }));
+        return;
+    }
+    
+    if (target.player.role === '狼人') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 不能杀死狼人队友'
+        }));
+        return;
+    }
+    
+    handleNightAction(player.userId, 'kill', target.player.userId);
+}
+
+// 预言家查验
+function handleCheck(ws, player, args) {
+    if (!player || !player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经死亡，无法行动'
+        }));
+        return;
+    }
+    
+    if (player.role !== '预言家') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只有预言家可以查验'
+        }));
+        return;
+    }
+    
+    if (gameState.gamePhase !== 'night') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只能在夜晚查验'
+        }));
+        return;
+    }
+    
+    if (player.hasActed) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经行动过了'
+        }));
+        return;
+    }
+    
+    const targetName = args.join(' ').replace('@', '');
+    if (!targetName) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 请指定要查验的目标，例如: /check @张三'
+        }));
+        return;
+    }
+    
+    const target = findPlayerByUsername(targetName);
+    if (!target) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ 找不到玩家: ${targetName}`
+        }));
+        return;
+    }
+    
+    if (!target.player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ ${targetName} 已经死亡`
+        }));
+        return;
+    }
+    
+    handleNightAction(player.userId, 'check', target.player.userId);
+}
+
+// 女巫救人
+function handleSave(ws, player, args) {
+    if (!player || !player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经死亡，无法行动'
+        }));
+        return;
+    }
+    
+    if (player.role !== '女巫') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只有女巫可以使用解药'
+        }));
+        return;
+    }
+    
+    if (gameState.gamePhase !== 'night') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只能在夜晚使用解药'
+        }));
+        return;
+    }
+    
+    if (player.hasActed) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经行动过了'
+        }));
+        return;
+    }
+    
+    if (!gameState.killedTonight) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 今晚无人被杀，无法使用解药'
+        }));
+        return;
+    }
+    
+    const targetName = args.join(' ').replace('@', '');
+    if (!targetName) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 请指定要救的人，例如: /save @张三'
+        }));
+        return;
+    }
+    
+    const target = findPlayerByUsername(targetName);
+    if (!target) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ 找不到玩家: ${targetName}`
+        }));
+        return;
+    }
+    
+    if (target.player.userId !== gameState.killedTonight) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ ${targetName} 今晚没有被杀`
+        }));
+        return;
+    }
+    
+    handleNightAction(player.userId, 'save', target.player.userId);
+}
+
+// 女巫毒人
+function handlePoison(ws, player, args) {
+    if (!player || !player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经死亡，无法行动'
+        }));
+        return;
+    }
+    
+    if (player.role !== '女巫') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只有女巫可以使用毒药'
+        }));
+        return;
+    }
+    
+    if (gameState.gamePhase !== 'night') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只能在夜晚使用毒药'
+        }));
+        return;
+    }
+    
+    if (player.hasActed) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经行动过了'
+        }));
+        return;
+    }
+    
+    const targetName = args.join(' ').replace('@', '');
+    if (!targetName) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 请指定要毒死的人，例如: /poison @张三'
+        }));
+        return;
+    }
+    
+    const target = findPlayerByUsername(targetName);
+    if (!target) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ 找不到玩家: ${targetName}`
+        }));
+        return;
+    }
+    
+    if (!target.player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ ${targetName} 已经死亡`
+        }));
+        return;
+    }
+    
+    handleNightAction(player.userId, 'poison', target.player.userId);
+}
+
+// 女巫跳过
+function handleSkip(ws, player) {
+    if (!player || !player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经死亡，无法行动'
+        }));
+        return;
+    }
+    
+    if (player.role !== '女巫') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只有女巫可以跳过'
+        }));
+        return;
+    }
+    
+    if (gameState.gamePhase !== 'night') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只能在夜晚跳过'
+        }));
+        return;
+    }
+    
+    if (player.hasActed) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经行动过了'
+        }));
+        return;
+    }
+    
+    handleNightAction(player.userId, 'skip', null);
+}
+
+// 猎人开枪
+function handleShoot(ws, player, args) {
+    if (!player || player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只有死亡的猎人才能开枪'
+        }));
+        return;
+    }
+    
+    if (player.role !== '猎人') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 只有猎人能开枪'
+        }));
+        return;
+    }
+    
+    const targetName = args.join(' ').replace('@', '');
+    if (!targetName) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 请指定要开枪的目标，例如: /shoot @张三'
+        }));
+        return;
+    }
+    
+    const target = findPlayerByUsername(targetName);
+    if (!target) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ 找不到玩家: ${targetName}`
+        }));
+        return;
+    }
+    
+    if (!target.player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ ${targetName} 已经死亡`
+        }));
+        return;
+    }
+    
+    target.player.isAlive = false;
+    sendGameMessage(`🏹 猎人 ${player.username} 开枪带走了 ${targetName}`);
+    addSystemLog(`HUNTER: ${player.username} shot ${targetName}`);
+    
+    checkGameEnd();
+    broadcastGameState();
+}
+
+// 投票
+function handleVote(ws, player, args) {
+    if (!player || !player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经死亡，无法投票'
+        }));
+        return;
+    }
+    
+    if (gameState.gamePhase !== 'vote') {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 现在不是投票时间'
+        }));
+        return;
+    }
+    
+    if (player.hasVoted) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 你已经投过票了'
+        }));
+        return;
+    }
+    
+    const targetName = args.join(' ').replace('@', '');
+    if (!targetName) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: '❌ 请指定要投票的目标，例如: /vote @张三'
+        }));
+        return;
+    }
+    
+    const target = findPlayerByUsername(targetName);
+    if (!target) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ 找不到玩家: ${targetName}`
+        }));
+        return;
+    }
+    
+    if (!target.player.isAlive) {
+        ws.send(JSON.stringify({
+            type: 'system',
+            content: `❌ ${targetName} 已经死亡`
+        }));
+        return;
+    }
+    
+    gameState.votes.set(player.userId, target.player.userId);
+    player.hasVoted = true;
+    
+    sendGameMessage(`🗳️ ${player.username} 投票给了 ${targetName}`);
+    
+    const alivePlayers = Array.from(gameState.players.values()).filter(p => p.isAlive);
+    const votedCount = Array.from(gameState.votes.keys()).length;
+    
+    sendGameMessage(`📊 投票进度: ${votedCount}/${alivePlayers.length}`);
+    
+    if (votedCount >= alivePlayers.length) {
+        processVotePhase();
+    }
+}
+
+// 显示存活玩家
+function showAlivePlayers(ws) {
+    const alivePlayers = Array.from(gameState.players.values())
+        .filter(p => p.isAlive)
+        .map(p => p.username)
+        .join(', ');
+    
+    ws.send(JSON.stringify({
+        type: 'system',
+        content: `👥 存活玩家: ${alivePlayers || '无'}`
+    }));
+}
+
+// 显示剩余角色
+function showRemainingRoles(ws) {
+    const alivePlayers = Array.from(gameState.players.values()).filter(p => p.isAlive);
+    const roles = {};
+    
+    alivePlayers.forEach(p => {
+        roles[p.role] = (roles[p.role] || 0) + 1;
+    });
+    
+    const roleList = Object.entries(roles)
+        .map(([role, count]) => `${role} x${count}`)
+        .join(', ');
+    
+    ws.send(JSON.stringify({
+        type: 'system',
+        content: `📊 剩余角色: ${roleList}`
+    }));
+}
+
+// 显示游戏帮助
+function showGameHelp(ws) {
+    const helpText = Object.entries(GAME_COMMANDS)
+        .map(([cmd, desc]) => `/${cmd} - ${desc}`)
+        .join('\n');
+    
+    ws.send(JSON.stringify({
+        type: 'system',
+        content: `📚 游戏指令:\n${helpText}`
+    }));
+}
+
 // 开始游戏
 function startGame() {
     if (gameState.players.size < 5 || gameState.players.size > 8) {
-        return { success: false, message: '游戏需要5-8名玩家' };
+        sendGameMessage('❌ 游戏需要5-8名玩家');
+        return;
     }
 
-    logMessage('🎮 Game Event', 'Game started', { playerCount: gameState.players.size });
+    addSystemLog(`GAME: Game started with ${gameState.players.size} players`);
 
     // 根据玩家数量分配角色
     const roles = [];
@@ -490,7 +907,13 @@ function startGame() {
         player.hasVoted = false;
         player.hasActed = false;
         
-        logMessage('🎭 Role Assignment', `${player.username}(${player.userId}) is: ${player.role}`);
+        // 私聊发送角色信息
+        ws.send(JSON.stringify({
+            type: 'private',
+            content: `🎭 你的角色是：${player.role}\n${ROLE_CONFIG[player.role].description}`
+        }));
+        
+        addSystemLog(`GAME: ${player.username} assigned role: ${player.role}`);
     });
     
     gameState.isPlaying = true;
@@ -509,49 +932,38 @@ function startGame() {
     
     // 广播游戏开始
     broadcastGameState();
+    sendGameMessage('🌙 天黑请闭眼，请各角色使用指令行动');
+    sendGameMessage('💡 输入 /help 查看可用指令');
     
-    // 单独通知每个玩家他们的角色
+    // 私聊通知各角色可用指令
     gameState.players.forEach((player, ws) => {
-        ws.send(JSON.stringify({
-            type: 'yourRole',
-            role: player.role,
-            emoji: ROLE_CONFIG[player.role]?.emoji || '🎮',
-            description: ROLE_CONFIG[player.role]?.description || ''
-        }));
-    });
-    
-    broadcastMessage({
-        type: 'gameEvent',
-        content: '🌙 天黑请闭眼，请各角色执行技能...'
-    });
-    
-    // 通知狼人行动
-    notifyWolfAction();
-    
-    return { success: true };
-}
-
-// 通知狼人行动
-function notifyWolfAction() {
-    gameState.players.forEach((player, ws) => {
-        if (player.role === '狼人' && player.isAlive) {
-            const targets = Array.from(gameState.players.entries())
-                .filter(([targetWs, targetPlayer]) => 
-                    targetPlayer.isAlive && targetPlayer.role !== '狼人'
-                )
-                .map(([targetWs, targetPlayer]) => ({
-                    userId: targetPlayer.userId,
-                    username: targetPlayer.username
-                }));
-            
+        let instruction = '';
+        switch(player.role) {
+            case '狼人':
+                instruction = '🐺 你可以使用 /kill @用户名 杀死一名玩家';
+                break;
+            case '预言家':
+                instruction = '🔮 你可以使用 /check @用户名 查验一名玩家的身份';
+                break;
+            case '女巫':
+                instruction = '🧪 你可以使用 /save @用户名 救人，/poison @用户名 毒人，或 /skip 跳过';
+                break;
+        }
+        if (instruction) {
             ws.send(JSON.stringify({
-                type: 'nightActionRequest',
-                action: 'kill',
-                message: '请选择要击杀的目标',
-                targets: targets
+                type: 'private',
+                content: instruction
             }));
         }
     });
+    
+    addSystemLog(`GAME: Game started`);
+}
+
+// 通知所有夜间行动角色
+function notifyNightActions() {
+    // 通过系统消息提醒
+    sendGameMessage('🌙 夜晚阶段，请各角色使用指令行动');
 }
 
 // 处理夜间行动
@@ -564,64 +976,55 @@ function handleNightAction(userId, action, targetId) {
     
     const [playerWs, player] = playerEntry;
     
-    if (!player.isAlive) {
-        playerWs.send(JSON.stringify({
-            type: 'gameError',
-            content: '你已经死亡，无法行动'
-        }));
-        return false;
-    }
+    addSystemLog(`NIGHT: ${player.role} ${player.username} performed ${action} ${targetId ? 'on ' + targetId : ''}`);
     
-    const targetPlayer = targetId ? 
-        Array.from(gameState.players.values()).find(p => p.userId === targetId) : null;
-    
-    logMessage('🌙 Night Action', `${player.role} ${player.username} performed ${action} ${targetPlayer ? 'target: ' + targetPlayer.username : ''}`);
-    
+    // 记录行动
     gameState.nightActions.set(userId, { action, targetId });
     player.hasActed = true;
     
-    playerWs.send(JSON.stringify({
-        type: 'actionConfirm',
-        content: '✅ 行动已记录'
-    }));
-    
+    // 根据不同角色处理
     switch (player.role) {
         case '狼人':
             if (action === 'kill') {
                 gameState.killedTonight = targetId;
-                
-                gameState.players.forEach((p, ws) => {
-                    if (p.role === '狼人' && p.userId !== userId && p.isAlive) {
-                        ws.send(JSON.stringify({
-                            type: 'wolfAction',
-                            content: `狼队友选择了击杀 ${targetPlayer?.username}`
-                        }));
-                    }
-                });
+                const targetPlayer = Array.from(gameState.players.values()).find(p => p.userId === targetId);
+                sendGameMessage(`🐺 狼人选择了击杀目标`);
+                addSystemLog(`WEREWOLF: ${player.username} chose to kill ${targetPlayer?.username}`);
             }
             break;
             
         case '预言家':
-            if (action === 'check' && targetPlayer) {
+            if (action === 'check' && targetId) {
                 gameState.checkedTonight = targetId;
+                const targetPlayer = Array.from(gameState.players.values()).find(p => p.userId === targetId);
                 const isWerewolf = targetPlayer.role === '狼人';
                 playerWs.send(JSON.stringify({
-                    type: 'seerResult',
-                    target: targetPlayer.username,
-                    isWerewolf: isWerewolf
+                    type: 'private',
+                    content: `🔮 查验结果：${targetPlayer.username} ${isWerewolf ? '是狼人' : '不是狼人'}`
                 }));
+                addSystemLog(`SEER: ${player.username} checked ${targetPlayer.username} - Result: ${isWerewolf ? 'Werewolf' : 'Not Werewolf'}`);
             }
             break;
             
         case '女巫':
-            if (action === 'save') {
+            if (action === 'save' && targetId) {
                 gameState.savedTonight = targetId;
-            } else if (action === 'poison') {
+                const targetPlayer = Array.from(gameState.players.values()).find(p => p.userId === targetId);
+                sendGameMessage(`🧪 女巫使用了救药`);
+                addSystemLog(`WITCH: ${player.username} used SAVE potion on ${targetPlayer?.username}`);
+            } else if (action === 'poison' && targetId) {
                 gameState.poisonedTonight = targetId;
+                const targetPlayer = Array.from(gameState.players.values()).find(p => p.userId === targetId);
+                sendGameMessage(`🧪 女巫使用了毒药`);
+                addSystemLog(`WITCH: ${player.username} used POISON potion on ${targetPlayer?.username}`);
+            } else if (action === 'skip') {
+                sendGameMessage(`🧪 女巫选择了跳过`);
+                addSystemLog(`WITCH: ${player.username} chose to skip`);
             }
             break;
     }
     
+    // 检查是否所有需要行动的玩家都已行动
     checkAllNightActions();
     
     return true;
@@ -636,7 +1039,9 @@ function checkAllNightActions() {
     const witch = alivePlayers.find(p => p.role === '女巫');
     
     let allActed = true;
+    let actionsNeeded = [];
     
+    // 检查狼人
     if (wolves.length > 0) {
         const wolfActions = Array.from(gameState.nightActions.entries())
             .filter(([id, action]) => {
@@ -646,6 +1051,8 @@ function checkAllNightActions() {
         
         if (wolfActions.length < wolves.length) {
             allActed = false;
+            const remaining = wolves.length - wolfActions.length;
+            actionsNeeded.push(`${remaining}个狼人`);
         } else {
             const lastWolfAction = wolfActions[wolfActions.length - 1];
             if (lastWolfAction) {
@@ -654,22 +1061,33 @@ function checkAllNightActions() {
         }
     }
     
+    // 检查预言家
     if (seer) {
         const seerAction = Array.from(gameState.nightActions.entries())
             .find(([id]) => id === seer.userId);
-        if (!seerAction) allActed = false;
+        if (!seerAction) {
+            allActed = false;
+            actionsNeeded.push('预言家');
+        }
     }
     
+    // 检查女巫
     if (witch) {
         const witchAction = Array.from(gameState.nightActions.entries())
             .find(([id]) => id === witch.userId);
-        if (!witchAction) allActed = false;
+        if (!witchAction) {
+            allActed = false;
+            actionsNeeded.push('女巫');
+        }
     }
     
     if (allActed) {
+        addSystemLog(`NIGHT: All night actions completed, processing results...`);
         setTimeout(() => {
             processNightPhase();
         }, 2000);
+    } else {
+        sendGameMessage(`⏳ 等待 ${actionsNeeded.join('、')} 行动...`);
     }
     
     return allActed;
@@ -677,8 +1095,7 @@ function checkAllNightActions() {
 
 // 处理夜间阶段结束
 function processNightPhase() {
-    console.log('\n' + '='.repeat(50));
-    logMessage('🌙 Night Phase', 'Processing death results');
+    addSystemLog(`NIGHT PHASE: Processing death results`);
     
     let deaths = [];
     let deathMessages = [];
@@ -687,6 +1104,7 @@ function processNightPhase() {
     if (gameState.savedTonight && gameState.killedTonight === gameState.savedTonight) {
         gameState.killedTonight = null;
         deathMessages.push('💊 女巫使用了解药，有人被救了');
+        addSystemLog(`WITCH: Saved the victim`);
     }
     
     // 处理女巫毒人
@@ -697,6 +1115,7 @@ function processNightPhase() {
             poisonedPlayer.isAlive = false;
             deaths.push(poisonedPlayer);
             deathMessages.push(`☠️ ${poisonedPlayer.username} 被女巫毒死了`);
+            addSystemLog(`DEATH: ${poisonedPlayer.username} (${poisonedPlayer.role}) was poisoned by witch`);
         }
     }
     
@@ -708,26 +1127,25 @@ function processNightPhase() {
             killedPlayer.isAlive = false;
             deaths.push(killedPlayer);
             deathMessages.push(`🔪 ${killedPlayer.username} 被狼人杀死了`);
+            addSystemLog(`DEATH: ${killedPlayer.username} (${killedPlayer.role}) was killed by werewolves`);
         }
     }
     
+    // 广播死亡信息
     if (deathMessages.length > 0) {
         deathMessages.forEach(msg => {
-            broadcastMessage({
-                type: 'gameEvent',
-                content: msg
-            });
+            sendGameMessage(msg);
         });
     } else {
-        broadcastMessage({
-            type: 'gameEvent',
-            content: '🌄 昨晚是平安夜，无人死亡'
-        });
+        sendGameMessage('🌄 昨晚是平安夜，无人死亡');
+        addSystemLog(`NIGHT: Peaceful night, no one died`);
     }
     
+    // 检查游戏是否结束
     const gameEnded = checkGameEnd();
     if (gameEnded) return;
     
+    // 重置夜间行动记录
     gameState.nightActions.clear();
     gameState.killedTonight = null;
     gameState.savedTonight = null;
@@ -739,42 +1157,16 @@ function processNightPhase() {
         player.hasVoted = false;
     });
     
+    // 进入白天阶段
     gameState.gamePhase = 'day';
     gameState.phaseEndTime = Date.now() + GAME_TIMES.DAY;
     startPhaseTimer();
     
-    broadcastMessage({
-        type: 'phaseChange',
-        phase: 'day',
-        dayCount: gameState.dayCount
-    });
+    sendGameMessage(`☀️ 天亮了，第 ${gameState.dayCount} 天开始，大家开始讨论吧！`);
+    showAlivePlayers();
     
-    broadcastMessage({
-        type: 'gameEvent',
-        content: '☀️ 天亮了，大家开始讨论吧！'
-    });
-    
+    addSystemLog(`PHASE: Day ${gameState.dayCount} started`);
     broadcastGameState();
-}
-
-// 处理投票
-function handleVote(voterId, targetId) {
-    gameState.votes.set(voterId, targetId);
-    
-    const voter = Array.from(gameState.players.values()).find(p => p.userId === voterId);
-    const target = Array.from(gameState.players.values()).find(p => p.userId === targetId);
-    
-    if (voter && target) {
-        logMessage('🗳️ Vote', `${voter.username} voted for ${target.username}`);
-        voter.hasVoted = true;
-    }
-    
-    const alivePlayers = Array.from(gameState.players.values()).filter(p => p.isAlive);
-    const votedCount = Array.from(gameState.votes.keys()).length;
-    
-    if (votedCount >= alivePlayers.length) {
-        processVotePhase();
-    }
 }
 
 // 处理投票阶段
@@ -802,50 +1194,62 @@ function processVotePhase() {
         const eliminated = Array.from(gameState.players.values()).find(p => p.userId === eliminatedId);
         if (eliminated) {
             eliminated.isAlive = false;
-            broadcastMessage({
-                type: 'gameEvent',
-                content: `🗳️ ${eliminated.username} 被投票放逐`
-            });
+            sendGameMessage(`🗳️ ${eliminated.username} 被投票放逐 (${maxVotes}票)`);
+            addSystemLog(`VOTE RESULT: ${eliminated.username} (${eliminated.role}) was eliminated by vote (${maxVotes} votes)`);
             
+            // 猎人死亡可以开枪
             if (eliminated.role === '猎人') {
-                broadcastMessage({
-                    type: 'gameEvent',
-                    content: `🏹 猎人 ${eliminated.username} 可以开枪带走一人`
-                });
+                sendGameMessage(`🏹 猎人 ${eliminated.username} 死亡，可以使用 /shoot @用户名 开枪带走一人`);
             }
         }
     } else {
-        broadcastMessage({
-            type: 'gameEvent',
-            content: '🗳️ 平票，无人被放逐'
-        });
+        sendGameMessage('🗳️ 平票，无人被放逐');
+        addSystemLog(`VOTE RESULT: Tie vote, no one eliminated`);
     }
     
+    // 检查游戏是否结束
     const gameEnded = checkGameEnd();
     if (gameEnded) return;
     
+    // 重置投票记录
     gameState.votes.clear();
     gameState.players.forEach(player => {
         player.hasVoted = false;
     });
     
+    // 进入下一夜
     gameState.dayCount++;
     gameState.gamePhase = 'night';
     gameState.phaseEndTime = Date.now() + GAME_TIMES.NIGHT;
     startPhaseTimer();
     
-    broadcastMessage({
-        type: 'phaseChange',
-        phase: 'night',
-        dayCount: gameState.dayCount
-    });
+    sendGameMessage(`🌙 天黑请闭眼，第 ${gameState.dayCount} 天夜晚`);
     
-    broadcastMessage({
-        type: 'gameEvent',
-        content: '🌙 天黑请闭眼，请各角色执行技能...'
-    });
+    addSystemLog(`PHASE: Night ${gameState.dayCount} started`);
     
-    notifyWolfAction();
+    // 私聊通知各角色
+    gameState.players.forEach((player, ws) => {
+        if (player.isAlive) {
+            let instruction = '';
+            switch(player.role) {
+                case '狼人':
+                    instruction = '🐺 你可以使用 /kill @用户名 杀死一名玩家';
+                    break;
+                case '预言家':
+                    instruction = '🔮 你可以使用 /check @用户名 查验一名玩家的身份';
+                    break;
+                case '女巫':
+                    instruction = '🧪 你可以使用 /save @用户名 救人，/poison @用户名 毒人，或 /skip 跳过';
+                    break;
+            }
+            if (instruction) {
+                ws.send(JSON.stringify({
+                    type: 'private',
+                    content: instruction
+                }));
+            }
+        }
+    });
     
     broadcastGameState();
 }
@@ -881,26 +1285,16 @@ function endGame(winner) {
     const players = Array.from(gameState.players.values()).map(p => ({
         username: p.username,
         role: p.role,
-        isAlive: p.isAlive,
-        emoji: ROLE_CONFIG[p.role]?.emoji || '🎮'
+        isAlive: p.isAlive
     }));
     
-    logMessage('🏆 Game Over', `${winner} wins!`);
-    console.log('📊 Final roles:');
+    addSystemLog(`GAME OVER: ${winner} wins!`);
+    
+    sendGameMessage(`🎉 游戏结束，${winner}获胜！`);
+    sendGameMessage('📊 最终身份：');
+    
     players.forEach(p => {
-        const status = p.isAlive ? '😊 Alive' : '💀 Dead';
-        console.log(`   ${p.emoji} ${p.username}: ${p.role} ${status}`);
-    });
-    
-    broadcastMessage({
-        type: 'gameEnd',
-        winner: winner,
-        players: players
-    });
-    
-    broadcastMessage({
-        type: 'gameEvent',
-        content: `🎉 游戏结束，${winner}获胜！`
+        sendGameMessage(`${p.username} - ${p.role} - ${p.isAlive ? '😊存活' : '💀死亡'}`);
     });
     
     broadcastGameState();
@@ -914,46 +1308,356 @@ function startPhaseTimer() {
     
     gameState.phaseTimer = setInterval(() => {
         const now = Date.now();
+        const remaining = Math.max(0, Math.floor((gameState.phaseEndTime - now) / 1000));
+        
+        // 每10秒广播一次剩余时间
+        if (remaining % 10 === 0 && remaining > 0) {
+            sendGameMessage(`⏱️ 剩余时间: ${Math.floor(remaining / 60)}分${remaining % 60}秒`);
+        }
+        
         if (now >= gameState.phaseEndTime) {
             clearInterval(gameState.phaseTimer);
             
             if (gameState.gamePhase === 'night') {
+                addSystemLog(`PHASE: Night time expired`);
+                sendGameMessage('⏰ 夜晚时间到，强制进入白天');
+                
+                gameState.players.forEach((player, ws) => {
+                    if (player.isAlive && !player.hasActed && 
+                        (player.role === '狼人' || player.role === '预言家' || player.role === '女巫')) {
+                        player.hasActed = true;
+                    }
+                });
+                
                 processNightPhase();
+                
             } else if (gameState.gamePhase === 'day') {
+                addSystemLog(`PHASE: Day time expired`);
                 gameState.gamePhase = 'vote';
                 gameState.phaseEndTime = Date.now() + GAME_TIMES.VOTE;
                 startPhaseTimer();
                 
-                broadcastMessage({
-                    type: 'phaseChange',
-                    phase: 'vote',
-                    dayCount: gameState.dayCount
-                });
-                
-                broadcastMessage({
-                    type: 'gameEvent',
-                    content: '🗳️ 投票时间到，请选择要放逐的玩家'
-                });
+                sendGameMessage('🗳️ 讨论时间到，进入投票阶段');
+                sendGameMessage('💡 使用 /vote @用户名 进行投票');
                 
                 broadcastGameState();
+                addSystemLog(`PHASE: Vote started (Day ${gameState.dayCount})`);
+                
             } else if (gameState.gamePhase === 'vote') {
+                addSystemLog(`PHASE: Vote time expired`);
+                
+                const alivePlayers = Array.from(gameState.players.values()).filter(p => p.isAlive);
+                alivePlayers.forEach(player => {
+                    if (!player.hasVoted) {
+                        player.hasVoted = true;
+                    }
+                });
+                
                 processVotePhase();
             }
         }
-        
-        const remaining = Math.max(0, Math.floor((gameState.phaseEndTime - now) / 1000));
-        broadcastMessage({
-            type: 'phaseTimer',
-            remaining: remaining,
-            phase: gameState.gamePhase
-        });
     }, 1000);
+}
+
+// ========== 管理员功能 ==========
+
+// 禁言用户
+function muteUser(targetUsername, reason = 'Admin action', adminWs = null) {
+    let targetWs = null;
+    let targetUser = null;
+    
+    users.forEach((user, ws) => {
+        if (user.username === targetUsername) {
+            targetWs = ws;
+            targetUser = user;
+        }
+    });
+    
+    if (!targetWs) {
+        if (adminWs) {
+            adminWs.send(JSON.stringify({
+                type: 'adminError',
+                content: `User ${targetUsername} does not exist`
+            }));
+        }
+        return false;
+    }
+    
+    targetUser.isMuted = true;
+    
+    targetWs.send(JSON.stringify({
+        type: 'system',
+        content: `🔇 你已被管理员禁言，原因: ${reason}`
+    }));
+    
+    broadcastMessage({
+        type: 'system',
+        content: `🔇 管理员将 ${targetUsername} 禁言，原因: ${reason}`
+    });
+    
+    addSystemLog(`ADMIN: Muted user ${targetUsername} (${targetUser.ip}) - Reason: ${reason}`);
+    broadcastUsers();
+    
+    return true;
+}
+
+// 取消禁言
+function unmuteUser(targetUsername, adminWs = null) {
+    let targetWs = null;
+    let targetUser = null;
+    
+    users.forEach((user, ws) => {
+        if (user.username === targetUsername) {
+            targetWs = ws;
+            targetUser = user;
+        }
+    });
+    
+    if (!targetWs) {
+        if (adminWs) {
+            adminWs.send(JSON.stringify({
+                type: 'adminError',
+                content: `User ${targetUsername} does not exist`
+            }));
+        }
+        return false;
+    }
+    
+    targetUser.isMuted = false;
+    
+    targetWs.send(JSON.stringify({
+        type: 'system',
+        content: `🔊 你已被管理员取消禁言`
+    }));
+    
+    broadcastMessage({
+        type: 'system',
+        content: `🔊 管理员取消了 ${targetUsername} 的禁言`
+    });
+    
+    addSystemLog(`ADMIN: Unmuted user ${targetUsername}`);
+    broadcastUsers();
+    
+    return true;
+}
+
+// 封禁IP
+function banIP(ip, reason = 'Admin action', adminWs = null) {
+    if (bannedIPs.has(ip)) {
+        if (adminWs) {
+            adminWs.send(JSON.stringify({
+                type: 'adminError',
+                content: `IP ${ip} is already banned`
+            }));
+        }
+        return false;
+    }
+    
+    bannedIPs.add(ip);
+    
+    users.forEach((user, ws) => {
+        if (user.ip === ip) {
+            ws.send(JSON.stringify({
+                type: 'kicked',
+                content: `你的IP已被封禁，原因: ${reason}`
+            }));
+            setTimeout(() => {
+                ws.close();
+            }, 1000);
+            users.delete(ws);
+        }
+    });
+    
+    addSystemLog(`ADMIN: Banned IP ${ip} - Reason: ${reason}`);
+    
+    if (adminWs) {
+        adminWs.send(JSON.stringify({
+            type: 'adminSuccess',
+            content: `IP ${ip} has been banned`
+        }));
+    }
+    
+    broadcastUsers();
+    return true;
+}
+
+// 解封IP
+function unbanIP(ip, adminWs = null) {
+    if (!bannedIPs.has(ip)) {
+        if (adminWs) {
+            adminWs.send(JSON.stringify({
+                type: 'adminError',
+                content: `IP ${ip} is not banned`
+            }));
+        }
+        return false;
+    }
+    
+    bannedIPs.delete(ip);
+    addSystemLog(`ADMIN: Unbanned IP ${ip}`);
+    
+    if (adminWs) {
+        adminWs.send(JSON.stringify({
+            type: 'adminSuccess',
+            content: `IP ${ip} has been unbanned`
+        }));
+    }
+    
+    return true;
+}
+
+// 封禁用户
+function banUser(targetUsername, reason = 'Admin action', adminWs = null) {
+    let targetWs = null;
+    let targetUser = null;
+    
+    users.forEach((user, ws) => {
+        if (user.username === targetUsername) {
+            targetWs = ws;
+            targetUser = user;
+        }
+    });
+    
+    if (!targetWs) {
+        if (adminWs) {
+            adminWs.send(JSON.stringify({
+                type: 'adminError',
+                content: `User ${targetUsername} does not exist`
+            }));
+        }
+        return false;
+    }
+    
+    return banIP(targetUser.ip, reason, adminWs);
+}
+
+// 撤回消息
+function recallMessage(messageId, reason = 'Admin action', adminWs = null) {
+    if (recalledMessages.has(messageId)) {
+        if (adminWs) {
+            adminWs.send(JSON.stringify({
+                type: 'adminError',
+                content: `Message ${messageId} already recalled`
+            }));
+        }
+        return false;
+    }
+    
+    const messageIndex = messageHistory.findIndex(m => m.id === messageId);
+    
+    if (messageIndex === -1) {
+        if (adminWs) {
+            adminWs.send(JSON.stringify({
+                type: 'adminError',
+                content: `Message ${messageId} not found`
+            }));
+        }
+        return false;
+    }
+    
+    const message = messageHistory[messageIndex];
+    recalledMessages.add(messageId);
+    messageHistory.splice(messageIndex, 1);
+    
+    broadcastMessage({
+        type: 'messageRecalled',
+        messageId: messageId,
+        username: message.username,
+        content: `⚠️ 管理员撤回了一条消息: ${reason}`
+    });
+    
+    addSystemLog(`ADMIN: Recalled message from ${message.username} - ID: ${messageId} - Reason: ${reason}`);
+    
+    return true;
+}
+
+// 踢出用户
+function kickUser(targetUsername, reason = 'Admin action', adminWs = null) {
+    let targetWs = null;
+    let targetUser = null;
+    
+    users.forEach((user, ws) => {
+        if (user.username === targetUsername) {
+            targetWs = ws;
+            targetUser = user;
+        }
+    });
+    
+    if (!targetWs) {
+        if (adminWs) {
+            adminWs.send(JSON.stringify({
+                type: 'adminError',
+                content: `User ${targetUsername} does not exist`
+            }));
+        }
+        return false;
+    }
+    
+    targetWs.send(JSON.stringify({
+        type: 'kicked',
+        content: `你已被管理员踢出聊天室，原因: ${reason}`
+    }));
+    
+    broadcastMessage({
+        type: 'system',
+        content: `👢 管理员将 ${targetUsername} 踢出聊天室，原因: ${reason}`
+    });
+    
+    addSystemLog(`ADMIN: Kicked user ${targetUsername} (${targetUser.ip}) - Reason: ${reason}`);
+    
+    setTimeout(() => {
+        targetWs.close();
+    }, 1000);
+    
+    return true;
+}
+
+// 获取消息历史
+function getMessageHistory(adminWs) {
+    const messages = messageHistory.slice(-50).map(msg => ({
+        id: msg.id,
+        username: msg.username,
+        content: msg.content,
+        timestamp: msg.timestamp
+    }));
+    
+    adminWs.send(JSON.stringify({
+        type: 'adminHistory',
+        messages: messages
+    }));
+}
+
+// 获取系统日志
+function getSystemLogs(adminWs) {
+    adminWs.send(JSON.stringify({
+        type: 'systemLogs',
+        logs: systemLogs
+    }));
+}
+
+// 获取被封禁的IP列表
+function getBannedIPs(adminWs) {
+    const ips = Array.from(bannedIPs);
+    adminWs.send(JSON.stringify({
+        type: 'bannedIPs',
+        ips: ips
+    }));
 }
 
 // ========== WebSocket连接处理 ==========
 wss.on('connection', (ws, req) => {
     const clientIp = getClientIp(req);
-    console.log(`\n[${new Date().toLocaleTimeString()}] 🔌 New WebSocket connection from: ${clientIp}`);
+    
+    if (bannedIPs.has(clientIp)) {
+        ws.send(JSON.stringify({
+            type: 'error',
+            content: '你的IP已被封禁，无法连接'
+        }));
+        ws.close();
+        return;
+    }
+    
+    addSystemLog(`CONNECTION: New connection from ${clientIp}`);
     
     let userData = null;
 
@@ -970,8 +1674,24 @@ wss.on('connection', (ws, req) => {
             
             switch (message.type) {
                 case 'join':
+                    // 检查是否是管理员登录
+                    let username = message.username;
+                    let isAdmin = false;
+                    
+                    if (username.includes(':')) {
+                        const parts = username.split(':');
+                        const inputUsername = parts[0];
+                        const inputPassword = parts[1];
+                        
+                        if (inputPassword === ADMIN_PASSWORD) {
+                            username = inputUsername;
+                            isAdmin = true;
+                            addSystemLog(`ADMIN LOGIN: ${username} from ${clientIp}`);
+                        }
+                    }
+                    
                     const usernameExists = Array.from(users.values()).some(
-                        u => u.username === message.username
+                        u => u.username === username
                     );
                     
                     if (usernameExists) {
@@ -983,20 +1703,21 @@ wss.on('connection', (ws, req) => {
                     }
                     
                     userData = {
-                        username: message.username,
+                        username: username,
                         color: getRandomColor(),
                         id: generateUserId(),
                         ip: clientIp,
-                        isMuted: false
+                        isMuted: false,
+                        isAdmin: isAdmin
                     };
                     
                     users.set(ws, userData);
                     
-                    logMessage('👋 User Joined', `${message.username} (${userData.id}) from ${clientIp}`);
+                    addSystemLog(`USER JOIN: ${username} (${userData.id}) from ${clientIp} ${isAdmin ? '[ADMIN]' : ''}`);
                     
                     broadcastMessage({
                         type: 'system',
-                        content: `${message.username} 加入了聊天室`,
+                        content: `${username} 加入了聊天室`,
                         timestamp: new Date().toLocaleTimeString()
                     });
                     
@@ -1004,10 +1725,19 @@ wss.on('connection', (ws, req) => {
                     
                     ws.send(JSON.stringify({
                         type: 'welcome',
-                        username: message.username,
+                        username: username,
                         color: userData.color,
-                        userId: userData.id
+                        userId: userData.id,
+                        isAdmin: isAdmin
                     }));
+                    
+                    // 发送游戏帮助
+                    if (gameState.isPlaying) {
+                        ws.send(JSON.stringify({
+                            type: 'system',
+                            content: '🎮 游戏进行中，输入 /help 查看游戏指令'
+                        }));
+                    }
                     break;
                     
                 case 'message':
@@ -1021,9 +1751,18 @@ wss.on('connection', (ws, req) => {
                         return;
                     }
                     
+                    // 检查是否是游戏指令
+                    if (message.content.startsWith('/')) {
+                        const parsed = parseCommand(message.content);
+                        if (parsed) {
+                            handleGameCommand(ws, userData, parsed.cmd, parsed.args);
+                            return;
+                        }
+                    }
+                    
                     const messageId = generateUserId();
                     
-                    logMessage('💬 Message', `[${userData.username}](${userData.id}) from ${clientIp} | ID: ${messageId} | Content: ${message.content.substring(0, 50)}`);
+                    addSystemLog(`MESSAGE: ${userData.username}: ${message.content.substring(0, 50)}`);
                     
                     const chatMessage = {
                         type: 'chat',
@@ -1055,142 +1794,77 @@ wss.on('connection', (ws, req) => {
                     }, ws);
                     break;
                     
-                case 'joinGame':
-                    if (!userData) return;
-                    
-                    if (gameState.isPlaying) {
-                        ws.send(JSON.stringify({
-                            type: 'gameError',
-                            content: '游戏已经开始，无法加入'
-                        }));
-                        return;
-                    }
-                    
-                    const alreadyInGame = Array.from(gameState.players.values()).some(
-                        p => p.userId === userData.id
-                    );
-                    
-                    if (!alreadyInGame) {
-                        gameState.players.set(ws, {
-                            username: userData.username,
-                            userId: userData.id,
-                            role: null,
-                            isAlive: true,
-                            hasVoted: false,
-                            hasActed: false,
-                            ip: clientIp
-                        });
-                        
-                        if (gameState.players.size === 1) {
-                            gameState.hostId = userData.id;
-                        }
-                        
-                        logMessage('🎮 Joined Game', `${userData.username} joined the game, players: ${gameState.players.size}`);
-                        
-                        broadcastMessage({
-                            type: 'gameJoin',
-                            username: userData.username,
-                            userId: userData.id,
-                            playerCount: gameState.players.size
-                        });
-                        
-                        broadcastGameState();
-                    }
-                    break;
-                    
-                case 'leaveGame':
-                    if (!userData) return;
-                    
-                    if (!gameState.isPlaying) {
-                        gameState.players.delete(ws);
-                        
-                        logMessage('🎮 Left Game', `${userData.username} left the game, remaining: ${gameState.players.size}`);
-                        
-                        if (gameState.hostId === userData.id && gameState.players.size > 0) {
-                            const firstPlayer = Array.from(gameState.players.entries())[0];
-                            if (firstPlayer) {
-                                const playerData = gameState.players.get(firstPlayer[0]);
-                                gameState.hostId = playerData.userId;
-                                logMessage('👑 Host Transfer', `New host: ${playerData.username}`);
-                            }
-                        }
-                        
-                        broadcastMessage({
-                            type: 'gameLeave',
-                            username: userData.username,
-                            userId: userData.id,
-                            playerCount: gameState.players.size
-                        });
-                        
-                        broadcastGameState();
-                    }
-                    break;
-                    
-                case 'startGame':
-                    if (!userData) return;
-                    
-                    if (userData.id !== gameState.hostId) {
-                        ws.send(JSON.stringify({
-                            type: 'gameError',
-                            content: '只有房主可以开始游戏'
-                        }));
-                        return;
-                    }
-                    
-                    const result = startGame();
-                    if (!result.success) {
-                        ws.send(JSON.stringify({
-                            type: 'gameError',
-                            content: result.message
-                        }));
-                    }
-                    break;
-                    
-                case 'nightAction':
-                    if (!userData || !gameState.isPlaying || gameState.gamePhase !== 'night') {
-                        ws.send(JSON.stringify({
-                            type: 'gameError',
-                            content: '现在不是行动时间'
-                        }));
-                        return;
-                    }
-                    
-                    handleNightAction(userData.id, message.action, message.targetId);
-                    break;
-                    
-                case 'vote':
-                    if (!userData || !gameState.isPlaying || gameState.gamePhase !== 'vote') {
-                        ws.send(JSON.stringify({
-                            type: 'gameError',
-                            content: '现在不是投票时间'
-                        }));
-                        return;
-                    }
-                    
-                    handleVote(userData.id, message.targetId);
-                    
-                    ws.send(JSON.stringify({
-                        type: 'voteConfirm',
-                        content: '🗳️ 投票已记录'
-                    }));
-                    break;
-                    
                 case 'getGameState':
-                    const players = Array.from(gameState.players.values()).map(p => ({
-                        username: p.username,
-                        userId: p.userId,
-                        isAlive: p.isAlive !== false
+                    broadcastGameState();
+                    break;
+                    
+                // 管理员操作
+                case 'adminGetUsers':
+                    if (!userData || !userData.isAdmin) return;
+                    
+                    const userList = Array.from(users.values()).map(u => ({
+                        username: u.username,
+                        id: u.id,
+                        ip: u.ip,
+                        isMuted: u.isMuted,
+                        isAdmin: u.isAdmin
                     }));
                     
                     ws.send(JSON.stringify({
-                        type: 'gameState',
-                        isPlaying: gameState.isPlaying,
-                        players: players,
-                        hostId: gameState.hostId,
-                        playerCount: gameState.players.size,
-                        gamePhase: gameState.gamePhase,
-                        dayCount: gameState.dayCount
+                        type: 'adminUsers',
+                        users: userList
                     }));
+                    break;
+                    
+                case 'adminGetHistory':
+                    if (!userData || !userData.isAdmin) return;
+                    getMessageHistory(ws);
+                    break;
+                    
+                case 'adminGetLogs':
+                    if (!userData || !userData.isAdmin) return;
+                    getSystemLogs(ws);
+                    break;
+                    
+                case 'adminGetBanned':
+                    if (!userData || !userData.isAdmin) return;
+                    getBannedIPs(ws);
+                    break;
+                    
+                case 'adminMute':
+                    if (!userData || !userData.isAdmin) return;
+                    muteUser(message.username, message.reason || 'Admin action', ws);
+                    break;
+                    
+                case 'adminUnmute':
+                    if (!userData || !userData.isAdmin) return;
+                    unmuteUser(message.username, ws);
+                    break;
+                    
+                case 'adminBan':
+                    if (!userData || !userData.isAdmin) return;
+                    if (message.ip) {
+                        banIP(message.ip, message.reason || 'Admin action', ws);
+                    } else if (message.username) {
+                        banUser(message.username, message.reason || 'Admin action', ws);
+                    }
+                    break;
+                    
+                case 'adminUnban':
+                    if (!userData || !userData.isAdmin) return;
+                    if (message.ip) {
+                        unbanIP(message.ip, ws);
+                    }
+                    break;
+                    
+                case 'adminRecall':
+                    if (!userData || !userData.isAdmin) return;
+                    recallMessage(message.messageId, message.reason || 'Admin action', ws);
+                    break;
+                    
+                case 'adminKick':
+                    if (!userData || !userData.isAdmin) return;
+                    kickUser(message.username, message.reason || 'Admin action', ws);
                     break;
                     
                 case 'ping':
@@ -1203,10 +1877,10 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('close', () => {
-        console.log(`\n[${new Date().toLocaleTimeString()}] 🔌 WebSocket connection closed from: ${clientIp}`);
+        addSystemLog(`CONNECTION: Connection closed from ${clientIp}`);
         
         if (userData) {
-            logMessage('👋 User Left', `${userData.username} (${userData.id})`);
+            addSystemLog(`USER LEFT: ${userData.username} (${userData.id})`);
             
             if (gameState.players.has(ws)) {
                 gameState.players.delete(ws);
@@ -1216,7 +1890,7 @@ wss.on('connection', (ws, req) => {
                     if (firstPlayer) {
                         const playerData = gameState.players.get(firstPlayer[0]);
                         gameState.hostId = playerData.userId;
-                        logMessage('👑 Host Transfer', `New host: ${playerData.username}`);
+                        sendGameMessage(`👑 房主转移给 ${playerData.username}`);
                     }
                 }
                 
@@ -1238,7 +1912,12 @@ wss.on('connection', (ws, req) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    clearScreen();
-    showAdminHelp();
-    setupConsoleCommands();
+    addSystemLog(`SERVER: Started on port ${PORT}`);
+    addSystemLog(`SERVER: Admin password: ${ADMIN_PASSWORD}`);
+    addSystemLog(`SERVER: Waiting for connections...`);
+    
+    console.log(`✅ Server started on port ${PORT}`);
+    console.log(`🔐 Admin password: ${ADMIN_PASSWORD}`);
+    console.log(`📝 Login format: username:${ADMIN_PASSWORD}`);
+    console.log(`🌐 Open http://localhost:${PORT} in your browser`);
 });

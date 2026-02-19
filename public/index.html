@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title> 公共聊天室</title>
+    <title>聊天室</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         * {
@@ -40,7 +40,6 @@
             margin: 0;
         }
 
-        /* 主容器 */
         .app-container {
             width: 100%;
             max-width: 500px;
@@ -158,6 +157,25 @@
 
         @keyframes spin {
             to { transform: rotate(360deg); }
+        }
+
+        .login-tip {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        
+        .login-tip p {
+            margin-bottom: 3px;
+        }
+        
+        .login-tip code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--danger);
         }
 
         /* 连接状态 */
@@ -299,15 +317,32 @@
         .message.system {
             align-self: center;
             max-width: 90%;
+            background: rgba(0,0,0,0.03);
+            border-radius: 20px;
+            padding: 6px 16px;
         }
 
         .system-content {
-            background: rgba(0,0,0,0.05);
-            padding: 6px 16px;
-            border-radius: 20px;
             font-size: 12px;
             color: #666;
             text-align: center;
+            word-break: break-word;
+        }
+
+        .message.private {
+            align-self: center;
+            max-width: 90%;
+            background: rgba(74, 144, 226, 0.1);
+            border-radius: 20px;
+            padding: 8px 16px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .private-content {
+            font-size: 13px;
+            color: var(--primary-dark);
+            text-align: center;
+            font-weight: 500;
         }
 
         .message.chat {
@@ -356,15 +391,24 @@
             color: white;
         }
 
+        .command-highlight {
+            background: rgba(255, 215, 0, 0.2);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-weight: bold;
+        }
+
         /* 输入区域 */
         .input-area {
             background: white;
             border-top: 1px solid #e0e0e0;
-            padding: 10px 16px;
-            padding-bottom: max(10px, var(--safe-area-bottom));
+            padding: 12px 16px;
+            padding-bottom: max(12px, var(--safe-area-bottom));
             display: flex;
             gap: 10px;
             align-items: flex-end;
+            position: relative;
         }
 
         .message-input-wrapper {
@@ -374,20 +418,23 @@
 
         .message-input {
             width: 100%;
-            padding: 10px 40px 10px 12px;
+            padding: 14px 45px 14px 15px;
             border: 2px solid #e0e0e0;
-            border-radius: 24px;
-            font-size: 14px;
+            border-radius: 28px;
+            font-size: 15px;
             resize: none;
-            max-height: 100px;
+            max-height: 120px;
             background: #f8f9fa;
             font-family: inherit;
+            transition: all 0.3s ease;
+            line-height: 1.5;
         }
 
         .message-input:focus {
             border-color: var(--primary);
             outline: none;
             background: white;
+            box-shadow: 0 0 0 3px rgba(74,144,226,0.1);
         }
 
         .message-input:disabled {
@@ -395,46 +442,183 @@
             opacity: 0.7;
         }
 
-        .emoji-btn {
-            position: absolute;
-            right: 8px;
-            bottom: 8px;
-            background: none;
-            border: none;
-            color: #999;
-            font-size: 18px;
-            padding: 4px;
-            cursor: pointer;
+        .message-input.command-mode {
+            border-color: #f39c12;
+            background: #fff8e7;
         }
 
-        .emoji-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .command-prompt {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #f39c12;
+            font-weight: bold;
+            font-size: 18px;
+            display: none;
+            z-index: 2;
+        }
+
+        .command-prompt.visible {
+            display: block;
+        }
+
+        .command-input {
+            padding-left: 35px !important;
         }
 
         .send-btn {
-            padding: 0 20px;
-            height: 42px;
+            padding: 0 24px;
+            height: 48px;
             background: var(--primary);
             color: white;
             border: none;
-            border-radius: 24px;
-            font-size: 14px;
+            border-radius: 28px;
+            font-size: 15px;
             font-weight: 600;
             white-space: nowrap;
             cursor: pointer;
             transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            box-shadow: 0 4px 10px rgba(74,144,226,0.3);
+        }
+
+        .send-btn i {
+            font-size: 15px;
+        }
+
+        .send-btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(74,144,226,0.4);
+        }
+
+        .send-btn:active {
+            transform: translateY(0);
         }
 
         .send-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
-        .send-btn:active {
-            transform: scale(0.95);
+        /* 指令建议 - 定位在输入框上方 */
+        .command-suggestions {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 16px 16px 0 0;
+            box-shadow: 0 -8px 25px rgba(0,0,0,0.15);
+            border: 1px solid #e0e0e0;
+            border-bottom: none;
+            max-height: 250px;
+            overflow-y: auto;
+            display: none;
+            z-index: 100;
+            margin-bottom: 8px;
         }
 
+        .command-suggestions.visible {
+            display: block;
+            animation: slideUp 0.2s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .suggestion-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion-item:hover {
+            background: #f8f9fa;
+        }
+
+        .suggestion-item.selected {
+            background: #e3f2fd;
+            border-left: 3px solid var(--primary);
+        }
+
+        .suggestion-cmd {
+            font-weight: 600;
+            color: var(--primary);
+            min-width: 90px;
+            font-size: 14px;
+            background: rgba(74, 144, 226, 0.1);
+            padding: 4px 8px;
+            border-radius: 16px;
+            text-align: center;
+        }
+
+        .suggestion-desc {
+            font-size: 13px;
+            color: #666;
+            flex: 1;
+        }
+
+        /* 快速指令按钮 - 定位在输入框上方左侧 */
+        .quick-commands {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            z-index: 99;
+        }
+
+        .quick-cmd-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+        }
+
+        .quick-cmd-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            background: var(--primary-dark);
+        }
+
+        .quick-cmd-btn i {
+            font-size: 12px;
+        }
+
+        /* 打字指示器 */
         .typing-indicator {
             padding: 5px 16px;
             font-size: 11px;
@@ -487,6 +671,22 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .user-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .user-card.in-game {
+            border-left: 3px solid var(--success);
+        }
+
+        .user-card.dead {
+            opacity: 0.6;
+            border-left: 3px solid var(--danger);
         }
 
         .user-avatar {
@@ -514,9 +714,27 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
 
-        /* 游戏面板简化版 */
+        .user-status {
+            font-size: 11px;
+            color: #999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-role-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.05);
+        }
+
+        /* 游戏面板 */
         .game-panel {
             padding: 16px;
         }
@@ -527,23 +745,60 @@
             padding: 20px;
             border-radius: 12px;
             margin-bottom: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .game-header::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
         .game-header h3 {
             font-size: 18px;
-            margin-bottom: 5px;
+            margin-bottom: 10px;
             display: flex;
             align-items: center;
             gap: 8px;
+            position: relative;
+            z-index: 1;
         }
 
-        .game-status-badge {
-            display: inline-block;
-            padding: 4px 12px;
+        .game-phase-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .game-phase-badge {
             background: rgba(255,255,255,0.2);
+            padding: 6px 12px;
             border-radius: 20px;
-            font-size: 12px;
-            margin-top: 10px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .game-timer {
+            background: rgba(0,0,0,0.3);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-family: monospace;
+            font-weight: bold;
         }
 
         .game-players {
@@ -559,6 +814,12 @@
             color: var(--dark);
             display: flex;
             justify-content: space-between;
+            align-items: center;
+        }
+
+        .player-count {
+            font-size: 14px;
+            color: var(--primary);
         }
 
         .players-grid {
@@ -575,6 +836,78 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .game-player.alive {
+            border-left: 3px solid var(--success);
+        }
+
+        .game-player.dead {
+            border-left: 3px solid var(--danger);
+            opacity: 0.6;
+        }
+
+        .player-role {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.1);
+        }
+
+        .game-instructions {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .game-instructions h5 {
+            margin-bottom: 10px;
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .instruction-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .instruction-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .instruction-list li:hover {
+            background: rgba(74, 144, 226, 0.05);
+        }
+
+        .instruction-list li:last-child {
+            border-bottom: none;
+        }
+
+        .instruction-cmd {
+            background: var(--primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            min-width: 70px;
+            text-align: center;
+        }
+
+        .instruction-desc {
+            color: #666;
         }
 
         .game-btn {
@@ -611,109 +944,444 @@
         .game-btn:active {
             transform: scale(0.98);
         }
-        .game-player.alive {
-    border-left: 3px solid #2ecc71;
-}
 
-.game-player.dead {
-    border-left: 3px solid #e74c3c;
-    opacity: 0.6;
-}
+        /* 管理员面板 */
+        .admin-panel {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 16px;
+            border-radius: 12px;
+            margin: 10px;
+            position: fixed;
+            top: 60px;
+            right: 10px;
+            width: 350px;
+            max-width: 90%;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: none;
+        }
 
-.player-role {
-    font-size: 11px;
-    padding: 2px 6px;
-    border-radius: 10px;
-    background: rgba(0,0,0,0.1);
-    margin-left: 5px;
-}
-.night-actions {
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 12px;
-        margin-top: 16px;
-    }
-    
-    .night-actions h4 {
-        margin-bottom: 10px;
-        font-size: 16px;
-    }
-    
-    .night-actions p {
-        margin-bottom: 15px;
-        font-size: 14px;
-        opacity: 0.9;
-    }
-    
-    .action-buttons {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 15px;
-    }
-    
-    .action-btn {
-        flex: 1;
-        padding: 12px;
-        border: none;
-        border-radius: 8px;
-        background: var(--primary);
-        color: white;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .action-btn.secondary {
-        background: #e67e22;
-    }
-    
-    .action-btn.danger {
-        background: #e74c3c;
-    }
-    
-    .action-btn:active {
-        transform: scale(0.95);
-    }
-    
-    .target-select {
-        margin-top: 15px;
-    }
-    
-    .target-select h5 {
-        margin-bottom: 10px;
-        font-size: 14px;
-        opacity: 0.9;
-    }
-    
-    .target-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        max-height: 200px;
-        overflow-y: auto;
-    }
-    
-    .target-item {
-        padding: 10px;
-        background: rgba(255,255,255,0.1);
-        border-radius: 8px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .target-item:hover {
-        background: rgba(255,255,255,0.2);
-    }
-    
-    .target-item.selected {
-        background: var(--primary);
-        border: 2px solid white;
-    }
+        .admin-panel.visible {
+            display: block;
+        }
+
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .admin-header h3 {
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .admin-header h3 i {
+            color: #f39c12;
+        }
+
+        .admin-close {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .admin-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 10px;
+        }
+
+        .admin-tab {
+            padding: 6px 12px;
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            border-radius: 20px;
+            font-size: 13px;
+        }
+
+        .admin-tab.active {
+            background: #f39c12;
+            color: white;
+        }
+
+        .admin-content {
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .admin-user-list, .admin-message-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .admin-user-item {
+            background: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .admin-user-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .admin-user-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .admin-user-ip {
+            font-size: 11px;
+            opacity: 0.7;
+        }
+
+        .admin-user-status {
+            font-size: 11px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .status-badge {
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+        }
+
+        .status-muted {
+            background: #e74c3c;
+        }
+
+        .status-normal {
+            background: #2ecc71;
+        }
+
+        .status-admin {
+            background: #f39c12;
+        }
+
+        .status-banned {
+            background: #c0392b;
+        }
+
+        .admin-user-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .admin-user-actions button {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .admin-user-actions button:hover {
+            transform: scale(1.05);
+        }
+
+        .btn-mute {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-unmute {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .btn-kick {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-ban {
+            background: #c0392b;
+            color: white;
+        }
+
+        .admin-message-item {
+            background: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .admin-message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        .admin-message-content {
+            font-size: 13px;
+            margin-bottom: 5px;
+            word-break: break-word;
+        }
+
+        .admin-message-id {
+            font-size: 9px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .admin-message-actions {
+            display: flex;
+            gap: 5px;
+            justify-content: flex-end;
+        }
+
+        .btn-recall {
+            background: #e67e22;
+            color: white;
+            padding: 3px 8px;
+            border: none;
+            border-radius: 4px;
+            font-size: 10px;
+            cursor: pointer;
+        }
+
+        .admin-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #f39c12;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1001;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* ========== CMD终端样式 - 只在桌面端显示 ========== */
+        @media (min-width: 769px) {
+            .cmd-terminal {
+                background-color: #0a0a0a;
+                color: #cccccc;
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                font-size: 13px;
+                line-height: 1.5;
+                padding: 0;
+                border-radius: 6px;
+                border: 1px solid #333;
+                box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                position: fixed;
+                bottom: 80px;
+                right: 20px;
+                width: 600px;
+                height: 400px;
+                z-index: 2000;
+                display: none;
+                flex-direction: column;
+                overflow: hidden;
+                resize: both;
+                min-width: 400px;
+                min-height: 300px;
+                user-select: none;
+            }
+
+            .cmd-terminal.visible {
+                display: flex;
+            }
+
+            .terminal-toggle {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #2c3e50, #34495e);
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+                cursor: pointer;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+                z-index: 1999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.3s ease;
+            }
+
+            .terminal-toggle:hover {
+                transform: scale(1.1);
+                background: linear-gradient(135deg, #34495e, #2c3e50);
+            }
+
+            .terminal-toggle.active {
+                background: #e74c3c;
+            }
+
+            .cmd-terminal-header {
+                background-color: #1a1a1a;
+                padding: 8px 12px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 1px solid #333;
+                cursor: move;
+                user-select: none;
+            }
+
+            .cmd-terminal-title {
+                color: #fff;
+                font-weight: bold;
+                font-size: 12px;
+            }
+
+            .cmd-terminal-controls {
+                display: flex;
+                gap: 8px;
+            }
+
+            .cmd-terminal-btn {
+                background: none;
+                border: none;
+                color: #888;
+                cursor: pointer;
+                font-size: 14px;
+                padding: 0 4px;
+            }
+
+            .cmd-terminal-btn:hover {
+                color: #fff;
+            }
+
+            .cmd-terminal-content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 10px;
+                background-color: #0a0a0a;
+                scroll-behavior: smooth;
+                user-select: text;
+            }
+
+            .cmd-line {
+                margin: 2px 0;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                color: #cccccc;
+            }
+
+            .cmd-prompt {
+                color: #4ec9b0;
+                font-weight: bold;
+            }
+
+            .cmd-timestamp {
+                color: #808080;
+                margin-right: 8px;
+            }
+
+            .cmd-input-line {
+                display: flex;
+                align-items: center;
+                padding: 8px 12px;
+                background-color: #1a1a1a;
+                border-top: 1px solid #333;
+            }
+
+            .cmd-input-prompt {
+                color: #4ec9b0;
+                margin-right: 8px;
+                font-weight: bold;
+            }
+
+            .cmd-input {
+                flex: 1;
+                background: none;
+                border: none;
+                color: #fff;
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                font-size: 13px;
+                outline: none;
+            }
+
+            .cmd-input::placeholder {
+                color: #444;
+            }
+
+            /* 日志颜色 */
+            .cmd-log-info {
+                color: #cccccc;
+            }
+
+            .cmd-log-warning {
+                color: #ffd700;
+            }
+
+            .cmd-log-error {
+                color: #ff6b6b;
+            }
+
+            .cmd-log-success {
+                color: #6bff6b;
+            }
+
+            .cmd-log-admin {
+                color: #ff9d4a;
+            }
+
+            .cmd-log-game {
+                color: #9d6bff;
+            }
+        }
+
+        /* 手机端隐藏CMD终端和相关按钮 */
+        @media (max-width: 768px) {
+            .cmd-terminal,
+            .terminal-toggle,
+            .cmd-terminal.visible,
+            .terminal-toggle.active,
+            #cmdTerminal,
+            #terminalToggle {
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+            }
+            
+            /* 确保快速指令按钮在手机端正常显示 */
+            .quick-commands {
+                left: 10px;
+                gap: 5px;
+            }
+            
+            .quick-cmd-btn {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+            
+            .quick-cmd-btn i {
+                font-size: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -722,12 +1390,20 @@
         <div class="login-container" id="loginContainer">
             <div class="login-box">
                 <h3><i class="fas fa-user-plus"></i> 加入聊天</h3>
-                <input type="text" id="username" placeholder="输入昵称（2-20个字符）" maxlength="20" autocomplete="off">
+                <input type="text" id="username" placeholder="输入昵称" maxlength="20" autocomplete="off">
                 <button onclick="joinChat()" id="joinBtn">
                     <span id="joinText">进入聊天室</span>
                     <span class="spinner" id="joinSpinner" style="display: none;"></span>
                 </button>
                 <div id="loginError"></div>
+                
+                <div class="login-tip">
+                    <p><strong>📌 登录方式：</strong></p>
+                    <p>• 普通用户：直接输入昵称，如 <code>张三</code></p>
+                    <p>• 管理员：输入 <code>用户名:密码</code> 格式</p>
+                    <p style="color: #e67e22;">🔐 默认管理员密码: <code>admin123</code></p>
+                    <p style="color: #e67e22;">示例: <code>admin:admin123</code></p>
+                </div>
             </div>
         </div>
 
@@ -737,7 +1413,7 @@
             <div class="mobile-header">
                 <h2>
                     <i class="fas fa-comments"></i>
-                    聊天
+                    聊天室
                 </h2>
                 <div class="online-badge" id="onlineBadge">
                     <i class="fas fa-users"></i> <span id="onlineCount">0</span>
@@ -765,27 +1441,49 @@
                         <div class="messages-container" id="messages">
                             <div class="message system">
                                 <div class="system-content">
-                                    <i class="fas fa-info-circle"></i> 你好，欢迎
+                                    <i class="fas fa-info-circle"></i> 欢迎
+                                </div>
+                            </div>
+                            <div class="message system">
+                                <div class="system-content">
+                                    <i class="fas fa-terminal"></i> 输入 <span class="command-highlight">/help</span> 查看游戏指令
                                 </div>
                             </div>
                         </div>
                         
                         <div class="typing-indicator" id="typingIndicator" style="display: none;"></div>
                         
+                        <!-- 输入区域 -->
                         <div class="input-area">
+                            <!-- 快速指令按钮放在这里 -->
+                            <div class="quick-commands" id="quickCommands" style="display: none;">
+                                <button class="quick-cmd-btn" onclick="quickCommand('/join')">
+                                    <i class="fas fa-plus"></i> /join
+                                </button>
+                                <button class="quick-cmd-btn" onclick="quickCommand('/players')">
+                                    <i class="fas fa-users"></i> /players
+                                </button>
+                                <button class="quick-cmd-btn" onclick="quickCommand('/help')">
+                                    <i class="fas fa-question"></i> /help
+                                </button>
+                            </div>
+                            
                             <div class="message-input-wrapper">
+                                <span class="command-prompt" id="commandPrompt">/</span>
                                 <textarea 
                                     id="messageInput" 
                                     class="message-input" 
-                                    placeholder="输入消息..."
+                                    placeholder="输入消息... "
                                     rows="1"
                                     disabled
                                 ></textarea>
-                                <button class="emoji-btn" onclick="insertEmoji()" id="emojiBtn" disabled>
-                                    <i class="far fa-smile"></i>
-                                </button>
+                                <!-- 指令建议放在输入框上方 -->
+                                <div class="command-suggestions" id="commandSuggestions"></div>
                             </div>
-                            <button class="send-btn" onclick="sendMessage()" id="sendButton" disabled>发送</button>
+                            
+                            <button class="send-btn" onclick="sendMessage()" id="sendButton" disabled>
+                                <i class="fas fa-paper-plane"></i> 发送
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -794,7 +1492,7 @@
                 <div class="tab-panel" id="usersPanel">
                     <div class="users-panel">
                         <div class="online-stats">
-                            <h3><i class="fas fa-users"></i> 在线</h3>
+                            <h3><i class="fas fa-users"></i> 在线玩家</h3>
                             <div class="online-count">
                                 <span id="onlineCountDetail">0</span>
                                 <small>人</small>
@@ -805,45 +1503,96 @@
                 </div>
 
                 <!-- 游戏面板 -->
-                 
                 <div class="tab-panel" id="gamePanel">
-                    
                     <div class="game-panel">
                         <div class="game-header">
                             <h3><i class="fas fa-gamepad"></i> 狼人杀</h3>
-                            <div class="game-status-badge" id="gameStatus">waiting</div>
+                            <div class="game-phase-info">
+                                <span class="game-phase-badge" id="gameStatus">等待开始</span>
+                                <span class="game-timer" id="gameTimer">--:--</span>
+                            </div>
                         </div>
 
                         <div class="game-players">
                             <h4>
                                 <span>游戏玩家</span>
-                                <span id="playerCount">0/8</span>
+                                <span class="player-count" id="playerCount">0/8</span>
                             </h4>
                             <div class="players-grid" id="gamePlayers"></div>
                         </div>
 
-                        <button class="game-btn primary" id="joinGameBtn" onclick="joinGame()" disabled>
-                            <i class="fas fa-plus"></i> 加入游戏
-                        </button>
-                        <button class="game-btn secondary" id="leaveGameBtn" onclick="leaveGame()" style="display: none;" disabled>
-                            <i class="fas fa-sign-out-alt"></i> 离开游戏
-                        </button>
-                        <button class="game-btn primary" id="startGameBtn" onclick="startGame()" style="display: none;" disabled>
-                            <i class="fas fa-play"></i> 开始游戏
-                        </button>
-                    </div>
-                    
-                        <!-- 游戏操作 -->
-                        <div class="night-actions" id="nightActions" style="display: none;">
-                        <h4 id="nightActionTitle">夜间行动</h4>
-                        <p id="nightActionMessage"></p>
-                        <div class="action-buttons" id="actionButtons"></div>
-                        <div class="target-select" id="targetSelect" style="display: none;">
-                    <h5>选择目标：</h5>
-                    <div class="target-list" id="targetList"></div>
-                    </div>
-                    </div>
+                        <div class="game-instructions" id="gameInstructions">
+                            <h5><i class="fas fa-terminal"></i> 游戏指令</h5>
+                            <ul class="instruction-list" id="instructionList">
+                                <li onclick="quickCommand('/join')">
+                                    <span class="instruction-cmd">/join</span>
+                                    <span class="instruction-desc">加入游戏</span>
+                                </li>
+                                <li onclick="quickCommand('/leave')">
+                                    <span class="instruction-cmd">/leave</span>
+                                    <span class="instruction-desc">离开游戏</span>
+                                </li>
+                                <li onclick="quickCommand('/start')">
+                                    <span class="instruction-cmd">/start</span>
+                                    <span class="instruction-desc">开始游戏（房主）</span>
+                                </li>
+                                <li onclick="quickCommand('/players')">
+                                    <span class="instruction-cmd">/players</span>
+                                    <span class="instruction-desc">查看存活玩家</span>
+                                </li>
+                                <li onclick="quickCommand('/roles')">
+                                    <span class="instruction-cmd">/roles</span>
+                                    <span class="instruction-desc">查看剩余角色</span>
+                                </li>
+                                <li onclick="quickCommand('/help')">
+                                    <span class="instruction-cmd">/help</span>
+                                    <span class="instruction-desc">查看所有指令</span>
+                                </li>
+                            </ul>
+                        </div>
 
+                        <button class="game-btn primary" id="joinGameBtn" onclick="quickCommand('/join')" disabled>
+                            <i class="fas fa-plus"></i> 加入游戏 (/join)
+                        </button>
+                        <button class="game-btn secondary" id="leaveGameBtn" onclick="quickCommand('/leave')" style="display: none;" disabled>
+                            <i class="fas fa-sign-out-alt"></i> 离开游戏 (/leave)
+                        </button>
+                        <button class="game-btn primary" id="startGameBtn" onclick="quickCommand('/start')" style="display: none;" disabled>
+                            <i class="fas fa-play"></i> 开始游戏 (/start)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 管理员面板 -->
+        <div class="admin-panel" id="adminPanel">
+            <div class="admin-header">
+                <h3><i class="fas fa-shield-alt"></i> 管理员控制面板</h3>
+                <button class="admin-close" onclick="hideAdminPanel()">&times;</button>
+            </div>
+            
+            <div class="admin-tabs">
+                <button class="admin-tab active" onclick="switchAdminTab('users')">在线用户</button>
+                <button class="admin-tab" onclick="switchAdminTab('messages')">消息记录</button>
+                <button class="admin-tab" onclick="switchAdminTab('bans')">封禁列表</button>
+            </div>
+            
+            <div class="admin-content" id="adminUsersTab">
+                <div class="admin-user-list" id="adminUserList">
+                    <div style="text-align: center; padding: 20px; color: #999;">加载中...</div>
+                </div>
+            </div>
+            
+            <div class="admin-content" id="adminMessagesTab" style="display: none;">
+                <div class="admin-message-list" id="adminMessageList">
+                    <div style="text-align: center; padding: 20px; color: #999;">加载中...</div>
+                </div>
+            </div>
+
+            <div class="admin-content" id="adminBansTab" style="display: none;">
+                <div class="admin-ban-list" id="adminBanList">
+                    <div style="text-align: center; padding: 20px; color: #999;">加载中...</div>
                 </div>
             </div>
         </div>
@@ -852,750 +1601,570 @@
         <div id="connectionStatus" class="connection-status"></div>
     </div>
 
+    <!-- CMD终端按钮 - 只在桌面端显示 -->
+    <button class="terminal-toggle" id="terminalToggle" onclick="toggleTerminal()">
+        <i class="fas fa-terminal"></i>
+    </button>
+
+    <!-- CMD终端 - 只在桌面端显示 -->
+    <div class="cmd-terminal" id="cmdTerminal">
+        <div class="cmd-terminal-header" id="terminalHeader">
+            <span class="cmd-terminal-title">ADMIN@SERVER:~$ console</span>
+            <div class="cmd-terminal-controls">
+                <button class="cmd-terminal-btn" onclick="clearTerminal()"><i class="fas fa-trash"></i></button>
+                <button class="cmd-terminal-btn" onclick="toggleTerminal()"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div class="cmd-terminal-content" id="terminalContent">
+            <div class="cmd-line">
+                <span class="cmd-prompt">ADMIN@SERVER:~$</span> 
+                <span class="cmd-log-success">System initialized</span>
+            </div>
+            <div class="cmd-line">
+                <span class="cmd-prompt">ADMIN@SERVER:~$</span> 
+                <span>Type 'help' for available commands</span>
+            </div>
+        </div>
+        <div class="cmd-input-line">
+            <span class="cmd-input-prompt">ADMIN@SERVER:~$</span>
+            <input type="text" class="cmd-input" id="cmdInput" placeholder="Enter command..." disabled>
+        </div>
+    </div>
+
     <script>
-    // ========== 配置 ==========
-    const CONFIG = {
-        maxReconnectAttempts: 5,
-        reconnectDelay: 3000,
-        typingTimeout: 1000,
-        maxMessageLength: 500,
-        maxUsernameLength: 20
-    };
-
-    // ========== 全局变量 ==========
-    let ws = null;
-    let currentUsername = null;
-    let currentUserId = null;
-    let reconnectAttempts = 0;
-    let typingTimeout = null;
-    let isConnected = false;
-    let isJoining = false;
-    let heartbeatInterval = null;
-
-    // 游戏状态
-    let gameState = {
-        isPlaying: false,
-        players: [],
-        hostId: null,
-        playerCount: 0,
-        gamePhase: 'waiting',
-        dayCount: 1,
-        myRole: null
-    };
-
-    // 常用表情
-    const emojis = ['😊', '😂', '❤️', '👍', '🎉', '✨', '🔥', '💯'];
-
-    // ========== WebSocket连接 ==========
-    function connect() {
-        if (ws && ws.readyState === WebSocket.OPEN) return;
-        
-        updateConnectionStatus('connecting');
-        
-        // 获取当前主机地址
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        ws = new WebSocket(`${protocol}//${host}`);
-
-        ws.onopen = function() {
-            console.log('✅ 已连接到服务器');
-            isConnected = true;
-            reconnectAttempts = 0;
-            updateConnectionStatus('connected');
-            
-            // 启动心跳
-            startHeartbeat();
+        // ========== 配置 ==========
+        const CONFIG = {
+            maxReconnectAttempts: 5,
+            reconnectDelay: 3000,
+            typingTimeout: 1000,
+            maxMessageLength: 500,
+            maxUsernameLength: 20
         };
 
-        ws.onmessage = function(event) {
-            try {
-                const data = JSON.parse(event.data);
-                console.log('收到消息:', data);
-                handleMessage(data);
-            } catch (err) {
-                console.error('消息解析失败:', err);
-            }
+        // 游戏指令列表
+        const GAME_COMMANDS = {
+            'join': '加入游戏',
+            'leave': '离开游戏',
+            'start': '开始游戏（房主）',
+            'kill': '[@用户名] 狼人杀人',
+            'check': '[@用户名] 预言家查验',
+            'save': '[@用户名] 女巫救人',
+            'poison': '[@用户名] 女巫毒人',
+            'skip': '女巫跳过',
+            'shoot': '[@用户名] 猎人开枪',
+            'vote': '[@用户名] 投票放逐',
+            'players': '查看存活玩家',
+            'roles': '查看剩余角色',
+            'help': '查看帮助'
         };
 
-        ws.onclose = function() {
-            console.log('❌ 连接断开');
-            isConnected = false;
-            updateConnectionStatus('disconnected');
-            
-            // 禁用所有控件
-            enableControls(false);
-            
-            // 停止心跳
-            if (heartbeatInterval) {
-                clearInterval(heartbeatInterval);
-                heartbeatInterval = null;
-            }
-            
-            // 尝试重连
-            if (reconnectAttempts < CONFIG.maxReconnectAttempts) {
-                reconnectAttempts++;
-                setTimeout(connect, CONFIG.reconnectDelay);
-            }
+        // 管理员命令列表
+        const ADMIN_COMMANDS = {
+            'help': '显示此帮助信息',
+            'users': '列出所有在线用户',
+            'userinfo <用户名>': '查看用户详细信息',
+            'mute <用户名> [原因]': '禁言用户',
+            'unmute <用户名>': '取消用户禁言',
+            'kick <用户名> [原因]': '踢出用户',
+            'ban <用户名/IP> [原因]': '封禁用户或IP',
+            'unban <IP>': '解封IP',
+            'recall <消息ID> [原因]': '撤回消息',
+            'logs [数量]': '查看最近日志',
+            'search <用户名/IP>': '搜索用户',
+            'clear': '清屏',
+            'stats': '查看服务器统计'
         };
 
-        ws.onerror = function(error) {
-            console.error('WebSocket错误:', error);
-            updateConnectionStatus('disconnected');
+        // ========== 全局变量 ==========
+        let ws = null;
+        let currentUsername = null;
+        let currentUserId = null;
+        let currentUserIsAdmin = false;
+        let reconnectAttempts = 0;
+        let typingTimeout = null;
+        let isConnected = false;
+        let isJoining = false;
+        let heartbeatInterval = null;
+
+        // 游戏状态
+        let gameState = {
+            isPlaying: false,
+            players: [],
+            hostId: null,
+            playerCount: 0,
+            gamePhase: 'waiting',
+            dayCount: 1,
+            myRole: null,
+            phaseEndTime: null
         };
-    }
 
-    // 心跳
-    function startHeartbeat() {
-        if (heartbeatInterval) clearInterval(heartbeatInterval);
-        heartbeatInterval = setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'ping' }));
-            }
-        }, 30000);
-    }
+        // 管理员相关变量
+        let adminUsers = [];
+        let adminMessages = [];
+        let bannedIPs = [];
 
-    // 更新连接状态
-    function updateConnectionStatus(status) {
-        const statusEl = document.getElementById('connectionStatus');
-        if (!statusEl) return;
-        
-        statusEl.style.display = 'block';
-        statusEl.className = 'connection-status';
-        
-        let text = '';
-        switch(status) {
-            case 'connected':
-                statusEl.classList.add('status-connected');
-                text = '🟢 已连接';
-                break;
-            case 'connecting':
-                statusEl.classList.add('status-connecting');
-                text = '🟡 连接中...';
-                break;
-            case 'disconnected':
-                statusEl.classList.add('status-disconnected');
-                text = '🔴 已断开';
-                break;
-        }
-        statusEl.textContent = text;
-    }
+        // 常用表情
+        const emojis = ['😊', '😂', '❤️', '👍', '🎉', '✨', '🔥', '💯'];
 
-    // 启用/禁用控件
-    function enableControls(enabled) {
-        const messageInput = document.getElementById('messageInput');
-        const sendButton = document.getElementById('sendButton');
-        const emojiBtn = document.getElementById('emojiBtn');
-        const joinGameBtn = document.getElementById('joinGameBtn');
-        const leaveGameBtn = document.getElementById('leaveGameBtn');
-        const startGameBtn = document.getElementById('startGameBtn');
-        
-        if (messageInput) messageInput.disabled = !enabled;
-        if (sendButton) sendButton.disabled = !enabled;
-        if (emojiBtn) emojiBtn.disabled = !enabled;
-        if (joinGameBtn) joinGameBtn.disabled = !enabled;
-        if (leaveGameBtn) leaveGameBtn.disabled = !enabled;
-        if (startGameBtn) startGameBtn.disabled = !enabled;
-    }
+        // CMD终端变量
+        let terminalVisible = false;
+        let terminalLogs = [];
+        let cmdHistory = [];
+        let cmdHistoryIndex = -1;
+        let isDragging = false;
+        let dragOffsetX, dragOffsetY;
 
-    // ========== 登录功能 ==========
-    function joinChat() {
-        if (isJoining) return;
-        
-        const usernameInput = document.getElementById('username');
-        const joinBtn = document.getElementById('joinBtn');
-        const joinText = document.getElementById('joinText');
-        const joinSpinner = document.getElementById('joinSpinner');
-        
-        const username = usernameInput.value.trim();
-        
-        if (!username) {
-            showError('请输入昵称');
-            return;
-        }
+        // 指令建议相关
+        let commandSuggestions = [];
+        let selectedSuggestionIndex = -1;
 
-        if (username.length < 2) {
-            showError('昵称至少2个字符');
-            return;
-        }
+        // ========== WebSocket连接 ==========
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            
+            updateConnectionStatus('connecting');
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            ws = new WebSocket(`${protocol}//${host}`);
 
-        if (username.length > CONFIG.maxUsernameLength) {
-            showError(`昵称不能超过${CONFIG.maxUsernameLength}个字符`);
-            return;
-        }
-
-        if (!/^[\u4e00-\u9fa5a-zA-Z0-9]+$/.test(username)) {
-            showError('昵称只能包含中文、字母和数字');
-            return;
-        }
-
-        if (!isConnected) {
-            showError('connect to the server，请稍候...');
-            return;
-        }
-
-        isJoining = true;
-        currentUsername = username;
-        
-        // 显示加载状态
-        joinBtn.disabled = true;
-        joinText.style.display = 'none';
-        joinSpinner.style.display = 'inline-block';
-        
-        // 发送加入请求
-        ws.send(JSON.stringify({
-            type: 'join',
-            username: username
-        }));
-    }
-
-    // ========== 消息处理 ==========
-    function handleMessage(data) {
-        switch (data.type) {
-            case 'welcome':
-                // 登录成功
-                currentUserId = data.userId;
-                document.getElementById('loginContainer').style.display = 'none';
-                document.getElementById('mainApp').style.display = 'flex';
+            ws.onopen = function() {
+                console.log('✅ 已连接到服务器');
+                isConnected = true;
+                reconnectAttempts = 0;
+                updateConnectionStatus('connected');
                 
-                // 启用控件
-                enableControls(true);
+                startHeartbeat();
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('收到消息:', data);
+                    handleMessage(data);
+                } catch (err) {
+                    console.error('消息解析失败:', err);
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('❌ 连接断开');
+                isConnected = false;
+                updateConnectionStatus('disconnected');
                 
-                // 添加欢迎消息
-                addSystemMessage(`${data.username} 加入聊天室！`);
+                enableControls(false);
                 
-                // 请求游戏状态
-                setTimeout(() => {
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                }
+                
+                if (reconnectAttempts < CONFIG.maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    setTimeout(connect, CONFIG.reconnectDelay);
+                }
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket错误:', error);
+                updateConnectionStatus('disconnected');
+            };
+        }
+
+        // 心跳
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000);
+        }
+
+        // 更新连接状态
+        function updateConnectionStatus(status) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (!statusEl) return;
+            
+            statusEl.style.display = 'block';
+            statusEl.className = 'connection-status';
+            
+            let text = '';
+            switch(status) {
+                case 'connected':
+                    statusEl.classList.add('status-connected');
+                    text = '🟢 已连接';
+                    break;
+                case 'connecting':
+                    statusEl.classList.add('status-connecting');
+                    text = '🟡 连接中...';
+                    break;
+                case 'disconnected':
+                    statusEl.classList.add('status-disconnected');
+                    text = '🔴 已断开';
+                    break;
+            }
+            statusEl.textContent = text;
+        }
+
+        // 启用/禁用控件
+        function enableControls(enabled) {
+            const messageInput = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const joinGameBtn = document.getElementById('joinGameBtn');
+            const leaveGameBtn = document.getElementById('leaveGameBtn');
+            const startGameBtn = document.getElementById('startGameBtn');
+            const quickCommands = document.getElementById('quickCommands');
+            
+            if (messageInput) messageInput.disabled = !enabled;
+            if (sendButton) sendButton.disabled = !enabled;
+            
+            if (enabled) {
+                setupCommandInput();
+                if (quickCommands) quickCommands.style.display = 'flex';
+            }
+        }
+
+        // ========== 登录功能 ==========
+        function joinChat() {
+            if (isJoining) return;
+            
+            const usernameInput = document.getElementById('username');
+            const joinBtn = document.getElementById('joinBtn');
+            const joinText = document.getElementById('joinText');
+            const joinSpinner = document.getElementById('joinSpinner');
+            
+            const username = usernameInput.value.trim();
+            
+            if (!username) {
+                showError('请输入昵称');
+                return;
+            }
+
+            if (username.length < 2) {
+                showError('昵称至少2个字符');
+                return;
+            }
+
+            if (username.length > CONFIG.maxUsernameLength) {
+                showError(`昵称不能超过${CONFIG.maxUsernameLength}个字符`);
+                return;
+            }
+
+            if (!isConnected) {
+                showError('正在连接服务器，请稍候...');
+                return;
+            }
+
+            isJoining = true;
+            currentUsername = username;
+            
+            joinBtn.disabled = true;
+            joinText.style.display = 'none';
+            joinSpinner.style.display = 'inline-block';
+            
+            ws.send(JSON.stringify({
+                type: 'join',
+                username: username
+            }));
+        }
+
+        // ========== 消息处理 ==========
+        function handleMessage(data) {
+            console.log('处理消息:', data);
+            
+            switch (data.type) {
+                case 'welcome':
+                    currentUserId = data.userId;
+                    currentUserIsAdmin = data.isAdmin || false;
+                    
+                    console.log('当前用户是否为管理员:', currentUserIsAdmin);
+                    
+                    document.getElementById('loginContainer').style.display = 'none';
+                    document.getElementById('mainApp').style.display = 'flex';
+                    
+                    enableControls(true);
+                    
+                    addSystemMessage(`欢迎 ${data.username} 加入聊天室！`);
+                    
+                    if (currentUserIsAdmin) {
+                        console.log('管理员登录成功，显示面板');
+                        showAdminPanel();
+                        ws.send(JSON.stringify({ type: 'adminGetUsers' }));
+                        ws.send(JSON.stringify({ type: 'adminGetHistory' }));
+                        ws.send(JSON.stringify({ type: 'adminGetBanned' }));
+                        
+                        // 只在桌面端初始化终端
+                        if (window.innerWidth > 768) {
+                            initTerminal();
+                            addTerminalLog(`管理员 ${data.username} 登录成功`, 'success');
+                            addTerminalLog(`IP: ${data.ip || 'Unknown'}`, 'info');
+                        }
+                    }
+                    
+                    setTimeout(() => {
+                        ws.send(JSON.stringify({ type: 'getGameState' }));
+                    }, 500);
+                    break;
+                    
+                case 'chat':
+                    addMessage(data);
+                    if (currentUserIsAdmin && window.innerWidth > 768) {
+                        addTerminalLog(`[CHAT] ${data.username}: ${data.content}`, 'info');
+                    }
+                    break;
+                    
+                case 'system':
+                    addSystemMessage(data.content);
+                    if (currentUserIsAdmin && window.innerWidth > 768) {
+                        addTerminalLog(`[SYSTEM] ${data.content}`, 'game');
+                    }
+                    break;
+                    
+                case 'private':
+                    addPrivateMessage(data.content);
+                    break;
+                    
+                case 'users':
+                    updateUserList(data.users);
+                    updateOnlineCount(data.users.length);
+                    if (currentUserIsAdmin && window.innerWidth > 768) {
+                        addTerminalLog(`[INFO] 在线用户更新: ${data.users.length} 人在线`, 'info');
+                    }
+                    break;
+                    
+                case 'gameState':
+                    console.log('更新游戏状态:', data);
+                    updateGameState(data);
+                    break;
+                    
+                case 'gameEvent':
+                    addSystemMessage(`🎮 ${data.content}`);
+                    if (currentUserIsAdmin && window.innerWidth > 768) {
+                        addTerminalLog(`[GAME] ${data.content}`, 'game');
+                    }
+                    break;
+                    
+                case 'phaseTimer':
+                    updateGameTimer(data.remaining);
+                    break;
+                    
+                case 'yourRole':
+                    gameState.myRole = data.role;
+                    addPrivateMessage(`🎭 你的角色是：${data.role} - ${data.description}`);
+                    updateGameInstructions(data.role);
+                    break;
+                    
+                case 'seerResult':
+                    addPrivateMessage(`🔮 查验结果：${data.target} ${data.isWerewolf ? '是狼人' : '不是狼人'}`);
+                    break;
+                    
+                case 'actionConfirm':
+                    addSystemMessage(`✅ ${data.content}`);
+                    break;
+                    
+                case 'gameEnd':
+                    addSystemMessage(`=== 游戏结束，${data.winner}获胜 ===`);
+                    if (data.players) {
+                        data.players.forEach(p => {
+                            addSystemMessage(`${p.username} 是 ${p.role} ${p.isAlive ? '😊存活' : '💀死亡'}`);
+                        });
+                    }
                     ws.send(JSON.stringify({ type: 'getGameState' }));
-                }, 500);
-                break;
-
-            case 'nightActionRequest':
-                handleNightActionRequest(data);
-                break;
-
-            case 'phaseTimer':
-                handlePhaseTimer(data);
-                break; 
-
-            case 'wolfAction':
-
-                addSystemMessage(`🐺 ${data.content}`);
-                break;
-
-            case 'chat':
-                addMessage(data);
-                break;
-                
-            case 'system':
-                addSystemMessage(data.content);
-                break;
-                
-            case 'users':
-                updateUserList(data.users);
-                updateOnlineCount(data.users.length);
-                break;
-                
-            case 'typing':
-                handleTyping(data);
-                break;
-            case 'messageRecalled':
-                handleMessageRecalled(data);
-            break;
-            case 'gameState':
-                console.log('更新游戏状态:', data);
-                updateGameState(data);
-                break;
-                
-            case 'gameJoin':
-                addSystemMessage(`👤 ${data.username} 加入了游戏 (${data.playerCount}/8)`);
-                // 请求最新游戏状态
-                ws.send(JSON.stringify({ type: 'getGameState' }));
-                break;
-                
-            case 'gameLeave':
-                addSystemMessage(`👤 ${data.username} 离开了游戏 (${data.playerCount}/8)`);
-                // 请求最新游戏状态
-                ws.send(JSON.stringify({ type: 'getGameState' }));
-                break;
-                
-            case 'yourRole':
-                gameState.myRole = data.role;
-                addSystemMessage(`🎮 你的角色是：${data.role}`);
-                if (data.description) {
-                    addSystemMessage(`📖 角色能力：${data.description}`);
-                }
-                break;
-                
-            case 'gameEvent':
-                addSystemMessage(`🎮 ${data.content}`);
-                break;
-                
-            case 'phaseChange':
-                addSystemMessage(`🕐 进入${data.phase === 'night' ? '夜晚' : data.phase === 'day' ? '白天' : '投票'}阶段`);
-                break;
-                
-            case 'seerResult':
-                addSystemMessage(`🔮 查验结果：${data.target} ${data.isWerewolf ? '是狼人' : '不是狼人'}`);
-                break;
-                
-            case 'actionConfirm':
-                addSystemMessage(`✅ ${data.content}`);
-                break;
-                
-            case 'voteConfirm':
-                addSystemMessage(`🗳️ ${data.content}`);
-                break;
-                
-            case 'gameEnd':
-                addSystemMessage(`=== 游戏结束，${data.winner}获胜 ===`);
-                if (data.players) {
-                    data.players.forEach(p => {
-                        addSystemMessage(`${p.username} 是 ${p.role} ${p.isAlive ? '😊存活' : '💀死亡'}`);
-                    });
-                }
-                // 请求最新游戏状态
-                ws.send(JSON.stringify({ type: 'getGameState' }));
-                break;
-                
-            case 'gameError':
-                addSystemMessage(`❌ ${data.content}`);
-                break;
-                
-            case 'error':
-                showError(data.content);
-                break;
-                
-            case 'pong':
-                // 心跳响应
-                break;
-        }
-    }
-function handleMessageRecalled(data) {
-    const messagesDiv = document.getElementById('messages');
-    const messages = messagesDiv.children;
-    
-    // 查找要撤回的消息
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        if (msg.dataset.messageId === data.messageId) {
-            // 找到消息，替换内容
-            if (msg.classList.contains('own-message')) {
-                msg.querySelector('.message-bubble').innerHTML = '⚠️ 你的消息已被撤回';
-            } else {
-                msg.querySelector('.message-bubble').innerHTML = '⚠️ 该消息已被server撤回';
+                    break;
+                    
+                case 'messageRecalled':
+                    handleMessageRecalled(data);
+                    if (currentUserIsAdmin && window.innerWidth > 768) {
+                        addTerminalLog(`[ADMIN] 消息已撤回: ${data.messageId}`, 'admin');
+                    }
+                    break;
+                    
+                case 'error':
+                    showError(data.content);
+                    if (currentUserIsAdmin && window.innerWidth > 768) {
+                        addTerminalLog(`[ERROR] ${data.content}`, 'error');
+                    }
+                    break;
+                    
+                case 'adminUsers':
+                    console.log('收到管理员用户列表:', data.users);
+                    if (currentUserIsAdmin) {
+                        adminUsers = data.users;
+                        updateAdminUsers(data.users);
+                        if (window.innerWidth > 768) {
+                            addTerminalLog(`[ADMIN] 获取到 ${data.users.length} 个在线用户`, 'success');
+                        }
+                    }
+                    break;
+                    
+                case 'adminHistory':
+                    console.log('收到管理员消息历史:', data.messages);
+                    if (currentUserIsAdmin) {
+                        adminMessages = data.messages;
+                        updateAdminMessages(data.messages);
+                        if (window.innerWidth > 768) {
+                            addTerminalLog(`[ADMIN] 获取到 ${data.messages.length} 条消息历史`, 'success');
+                        }
+                    }
+                    break;
+                    
+                case 'bannedIPs':
+                    console.log('收到封禁IP列表:', data.ips);
+                    if (currentUserIsAdmin) {
+                        bannedIPs = data.ips || [];
+                        updateBannedIPs(bannedIPs);
+                        if (window.innerWidth > 768) {
+                            addTerminalLog(`[ADMIN] 当前有 ${bannedIPs.length} 个IP被封禁`, 'info');
+                        }
+                    }
+                    break;
+                    
+                case 'systemLogs':
+                    if (currentUserIsAdmin && window.innerWidth > 768) {
+                        addTerminalLog('=== 系统日志 ===', 'info');
+                        data.logs.forEach(log => {
+                            addTerminalLog(log, 'info');
+                        });
+                    }
+                    break;
+                    
+                case 'adminSuccess':
+                    if (currentUserIsAdmin) {
+                        if (window.innerWidth > 768) {
+                            addTerminalLog(`[SUCCESS] ${data.content}`, 'success');
+                        }
+                        showAdminNotification(data.content);
+                    }
+                    break;
+                    
+                case 'adminError':
+                    if (currentUserIsAdmin) {
+                        if (window.innerWidth > 768) {
+                            addTerminalLog(`[ERROR] ${data.content}`, 'error');
+                        }
+                        alert(`管理员操作失败: ${data.content}`);
+                    }
+                    break;
+                    
+                case 'pong':
+                    break;
             }
-            msg.querySelector('.message-bubble').style.backgroundColor = '#f0f0f0';
-            msg.querySelector('.message-bubble').style.color = '#999';
-            break;
         }
-    }
-    
-    // 添加系统通知
-    addSystemMessage(data.content);
-}
-    // ========== 聊天功能 ==========
-    function sendMessage() {
-        const input = document.getElementById('messageInput');
-        const content = input.value.trim();
-        
-        if (!content || !isConnected) return;
-        
-        if (content.length > CONFIG.maxMessageLength) {
-            showError(`消息不能超过${CONFIG.maxMessageLength}个字符`);
-            return;
-        }
-        
-        ws.send(JSON.stringify({
-            type: 'message',
-            content: content
-        }));
-        
-        input.value = '';
-        input.style.height = 'auto';
-    }
 
-   function addMessage(message) {
-    const messagesDiv = document.getElementById('messages');
-    const isOwnMessage = message.userId === currentUserId;
-    
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message chat ${isOwnMessage ? 'own-message' : ''}`;
-    messageDiv.dataset.messageId = message.id; // 添加消息ID属性
-    
-    messageDiv.innerHTML = `
-        <div class="message-header">
-            <span class="message-username" style="color: ${message.color || '#4a90e2'}">
-                ${escapeHtml(message.username)}
-            </span>
-            <span class="message-time">${message.timestamp || new Date().toLocaleTimeString()}</span>
-        </div>
-        <div class="message-bubble">${escapeHtml(message.content)}</div>
-    `;
-    
-    messagesDiv.appendChild(messageDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-
-    function addSystemMessage(content) {
-        const messagesDiv = document.getElementById('messages');
-        
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'message system';
-        messageDiv.innerHTML = `<div class="system-content">${content}</div>`;
-        
-        messagesDiv.appendChild(messageDiv);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-
-    function handleTyping(data) {
-        const indicator = document.getElementById('typingIndicator');
-        if (data.isTyping) {
-            indicator.textContent = `${data.username} 正在输入...`;
-            indicator.style.display = 'block';
-        } else {
-            indicator.style.display = 'none';
-        }
-    }
-
-    // ========== 用户列表 ==========
-    function updateUserList(users) {
-        const userList = document.getElementById('userList');
-        if (!userList) return;
-        
-        if (!users || users.length === 0) {
-            userList.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">暂无在线用户</div>';
-            return;
-        }
-        
-        userList.innerHTML = users.map(user => {
-            const avatar = user.username.charAt(0).toUpperCase();
-            const isCurrentUser = user.username === currentUsername;
+        // ========== 聊天功能 ==========
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
             
-            return `
-                <div class="user-card">
-                    <div class="user-avatar" style="background: ${user.color || '#4a90e2'}">
-                        ${avatar}
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">
-                            ${escapeHtml(user.username)}
-                            ${isCurrentUser ? ' (你)' : ''}
-                        </div>
-                    </div>
+            if (!content || !isConnected) return;
+            
+            if (content.length > CONFIG.maxMessageLength) {
+                showError(`消息不能超过${CONFIG.maxMessageLength}个字符`);
+                return;
+            }
+            
+            ws.send(JSON.stringify({
+                type: 'message',
+                content: content
+            }));
+            
+            input.value = '';
+            input.style.height = 'auto';
+            hideCommandSuggestions();
+        }
+
+        function addMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            const isOwnMessage = message.userId === currentUserId;
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message chat ${isOwnMessage ? 'own-message' : ''}`;
+            messageDiv.dataset.messageId = message.id;
+            
+            // 高亮显示指令
+            let content = escapeHtml(message.content);
+            if (content.startsWith('/')) {
+                content = `<span class="command-highlight">${content}</span>`;
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="message-username" style="color: ${message.color || '#4a90e2'}">
+                        ${escapeHtml(message.username)}
+                    </span>
+                    <span class="message-time">${message.timestamp || new Date().toLocaleTimeString()}</span>
                 </div>
+                <div class="message-bubble">${content}</div>
             `;
-        }).join('');
-    }
-
-    function updateOnlineCount(count) {
-        const onlineCount = document.getElementById('onlineCount');
-        const onlineCountDetail = document.getElementById('onlineCountDetail');
-        if (onlineCount) onlineCount.textContent = count;
-        if (onlineCountDetail) onlineCountDetail.textContent = count;
-    }
-
-    // ========== 游戏功能增强版 ==========
-    function joinGame() {
-        if (!isConnected) {
-            addSystemMessage('❌ 请等待连接成功');
-            return;
-        }
-        console.log('发送加入游戏请求');
-        ws.send(JSON.stringify({ type: 'joinGame' }));
-    }
-
-    function leaveGame() {
-        if (!isConnected) return;
-        console.log('发送离开游戏请求');
-        ws.send(JSON.stringify({ type: 'leaveGame' }));
-    }
-
-    function startGame() {
-        if (!isConnected) {
-            addSystemMessage('❌ 请等待连接成功');
-            return;
-        }
-        
-        // 检查玩家数量
-        if (gameState.players.length < 5) {
-            addSystemMessage('❌ 至少需要5名玩家才能开始游戏');
-            return;
-        }
-        
-        if (gameState.players.length > 8) {
-            addSystemMessage('❌ 最多只能有8名玩家');
-            return;
-        }
-        
-        // 检查是否是房主
-        if (gameState.hostId !== currentUserId) {
-            addSystemMessage('❌ 只有房主可以开始游戏');
-            return;
-        }
-        
-        console.log('发送开始游戏请求');
-        ws.send(JSON.stringify({ type: 'startGame' }));
-    }
-
-    function updateGameState(state) {
-        // 更新游戏状态
-        gameState = { 
-            ...gameState, 
-            isPlaying: state.isPlaying,
-            players: state.players || [],
-            hostId: state.hostId,
-            playerCount: state.playerCount || (state.players ? state.players.length : 0),
-            gamePhase: state.gamePhase || 'waiting',
-            dayCount: state.dayCount || 1
-        };
-        
-        console.log('更新后的游戏状态:', gameState);
-        
-        const gamePlayers = document.getElementById('gamePlayers');
-        const playerCount = document.getElementById('playerCount');
-        const joinGameBtn = document.getElementById('joinGameBtn');
-        const leaveGameBtn = document.getElementById('leaveGameBtn');
-        const startGameBtn = document.getElementById('startGameBtn');
-        const gameStatus = document.getElementById('gameStatus');
-        
-        // 更新玩家数量显示
-        if (playerCount) {
-            playerCount.textContent = `${gameState.playerCount}/8`;
-        }
-        
-        // 更新游戏状态显示
-        if (gameStatus) {
-            if (gameState.isPlaying) {
-                let phaseText = '游戏中';
-                if (gameState.gamePhase === 'night') phaseText = `🌙 第${gameState.dayCount}天夜晚`;
-                else if (gameState.gamePhase === 'day') phaseText = `☀️ 第${gameState.dayCount}天白天`;
-                else if (gameState.gamePhase === 'vote') phaseText = `🗳️ 第${gameState.dayCount}天投票`;
-                gameStatus.textContent = phaseText;
-            } else {
-                gameStatus.textContent = '等待开始';
-            }
-        }
-        
-        // 更新玩家列表显示
-        if (gamePlayers) {
-            if (gameState.players.length === 0) {
-                gamePlayers.innerHTML = '<div style="grid-column: span 2; text-align: center; padding: 20px; color: #999;">暂无玩家</div>';
-            } else {
-                gamePlayers.innerHTML = gameState.players.map(p => {
-                    const isHost = p.userId === gameState.hostId;
-                    const isCurrent = p.userId === currentUserId;
-                    return `
-                        <div class="game-player ${p.isAlive === false ? 'dead' : 'alive'}">
-                            <span>
-                                ${escapeHtml(p.username)}
-                                ${isCurrent ? ' (你)' : ''}
-                            </span>
-                            ${isHost ? '<span style="color: #f39c12; margin-left: 5px;">👑</span>' : ''}
-                            ${p.role && gameState.isPlaying ? `<span class="player-role">${p.role}</span>` : ''}
-                        </div>
-                    `;
-                }).join('');
-            }
-        }
-        
-        // 控制按钮显示逻辑
-        const isInGame = gameState.players.some(p => p.userId === currentUserId);
-        
-        if (gameState.isPlaying) {
-            // 游戏中，隐藏所有操作按钮
-            joinGameBtn.style.display = 'none';
-            leaveGameBtn.style.display = 'none';
-            startGameBtn.style.display = 'none';
-        } else {
-            // 游戏未开始
-            if (isInGame) {
-                // 玩家已在游戏中
-                joinGameBtn.style.display = 'none';
-                leaveGameBtn.style.display = 'block';
-                
-                // 只有房主且人数足够时显示开始按钮
-                if (gameState.hostId === currentUserId && gameState.players.length >= 5) {
-                    startGameBtn.style.display = 'block';
-                    startGameBtn.disabled = false;
-                } else {
-                    startGameBtn.style.display = 'none';
-                }
-            } else {
-                // 玩家不在游戏中
-                joinGameBtn.style.display = 'block';
-                leaveGameBtn.style.display = 'none';
-                startGameBtn.style.display = 'none';
-            }
-        }
-        
-        // 根据游戏阶段显示提示
-        if (gameState.isPlaying && gameState.gamePhase) {
-            let tip = '';
-            switch (gameState.gamePhase) {
-                case 'night':
-                    tip = '🌙 天黑请闭眼，请各角色执行技能';
-                    break;
-                case 'day':
-                    tip = '☀️ 天亮了，可以讨论了';
-                    break;
-                case 'vote':
-                    tip = '🗳️ 投票阶段，请选择要放逐的玩家';
-                    break;
-            }
-            if (tip) {
-                addSystemMessage(tip);
-            }
-        }
-        
-    }
-// 处理夜间行动请求
-function handleNightActionRequest(data) {
-    const nightActions = document.getElementById('nightActions');
-    const nightActionTitle = document.getElementById('nightActionTitle');
-    const nightActionMessage = document.getElementById('nightActionMessage');
-    const actionButtons = document.getElementById('actionButtons');
-    const targetSelect = document.getElementById('targetSelect');
-    const targetList = document.getElementById('targetList');
-    
-    nightActions.style.display = 'block';
-    nightActionTitle.textContent = '🌙 夜间行动';
-    nightActionMessage.textContent = data.message;
-    
-    // 清空之前的内容
-    actionButtons.innerHTML = '';
-    targetSelect.style.display = 'none';
-    
-    // 根据不同角色显示不同的行动按钮
-    if (data.action === 'kill') {
-        actionButtons.innerHTML = `
-            <button class="action-btn" onclick="showTargets('kill')">选择击杀目标</button>
-        `;
-    } else if (data.action === 'check') {
-        actionButtons.innerHTML = `
-            <button class="action-btn" onclick="showTargets('check')">选择查验目标</button>
-        `;
-    } else if (data.action === 'save' || data.action === 'poison') {
-        actionButtons.innerHTML = `
-            <button class="action-btn secondary" onclick="showTargets('save')">使用解药</button>
-            <button class="action-btn danger" onclick="showTargets('poison')">使用毒药</button>
-        `;
-    }
-    
-    // 保存目标列表供后续使用
-    window.currentTargets = data.targets || [];
-}
-
-// 显示目标选择
-function showTargets(action) {
-    const targetSelect = document.getElementById('targetSelect');
-    const targetList = document.getElementById('targetList');
-    
-    window.currentAction = action;
-    targetSelect.style.display = 'block';
-    
-    targetList.innerHTML = window.currentTargets.map(target => `
-        <div class="target-item" onclick="selectTarget('${target.userId}', '${target.username}')">
-            <span>${escapeHtml(target.username)}</span>
-        </div>
-    `).join('');
-}
-
-// 选择目标
-function selectTarget(userId, username) {
-    document.querySelectorAll('.target-item').forEach(item => {
-        item.classList.remove('selected');
-    });
-    
-    event.currentTarget.classList.add('selected');
-    
-    // 发送行动
-    ws.send(JSON.stringify({
-        type: 'nightAction',
-        action: window.currentAction,
-        targetId: userId
-    }));
-    
-    // 隐藏选择界面
-    document.getElementById('targetSelect').style.display = 'none';
-    document.getElementById('nightActions').style.display = 'none';
-    
-    addSystemMessage(`✅ 已选择目标: ${username}`);
-}
-
-// 更新阶段计时器
-function handlePhaseTimer(data) {
-    const minutes = Math.floor(data.remaining / 60);
-    const seconds = data.remaining % 60;
-    const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    
-    // 可以显示计时器
-    console.log(`阶段剩余时间: ${timeStr}`);
-}
-
-    // ========== UI控制 ==========
-    function switchTab(tab) {
-        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-        
-        if (tab === 'chat') {
-            document.querySelectorAll('.tab-item')[0].classList.add('active');
-            document.getElementById('chatPanel').classList.add('active');
-        } else if (tab === 'users') {
-            document.querySelectorAll('.tab-item')[1].classList.add('active');
-            document.getElementById('usersPanel').classList.add('active');
-        } else if (tab === 'game') {
-            document.querySelectorAll('.tab-item')[2].classList.add('active');
-            document.getElementById('gamePanel').classList.add('active');
             
-            // 切换到游戏标签时请求最新状态
-            if (isConnected) {
-                ws.send(JSON.stringify({ type: 'getGameState' }));
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addSystemMessage(content) {
+            const messagesDiv = document.getElementById('messages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.innerHTML = `<div class="system-content">${content}</div>`;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addPrivateMessage(content) {
+            const messagesDiv = document.getElementById('messages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message private';
+            messageDiv.innerHTML = `<div class="private-content">🔒 ${content}</div>`;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function handleMessageRecalled(data) {
+            const messagesDiv = document.getElementById('messages');
+            const messages = messagesDiv.children;
+            
+            for (let i = 0; i < messages.length; i++) {
+                const msg = messages[i];
+                if (msg.dataset.messageId === data.messageId) {
+                    if (msg.classList.contains('own-message')) {
+                        msg.querySelector('.message-bubble').innerHTML = '⚠️ 你的消息已被管理员撤回';
+                    } else {
+                        msg.querySelector('.message-bubble').innerHTML = '⚠️ 该消息已被管理员撤回';
+                    }
+                    msg.querySelector('.message-bubble').style.backgroundColor = '#f0f0f0';
+                    msg.querySelector('.message-bubble').style.color = '#999';
+                    break;
+                }
             }
+            
+            addSystemMessage(data.content);
         }
-    }
 
-    function insertEmoji() {
-        const input = document.getElementById('messageInput');
-        if (!input || input.disabled) return;
-        
-        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-        input.value += randomEmoji;
-        input.focus();
-    }
-
-    // ========== 工具函数 ==========
-    function escapeHtml(unsafe) {
-        if (!unsafe) return '';
-        return unsafe
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-    function showError(message) {
-        const errorDiv = document.getElementById('loginError');
-        if (errorDiv) {
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 3000);
-        } else {
-            alert(message);
-        }
-    }
-
-    // ========== 事件监听 ==========
-    document.addEventListener('DOMContentLoaded', function() {
-        const messageInput = document.getElementById('messageInput');
-        const usernameInput = document.getElementById('username');
-        
-        if (messageInput) {
-            messageInput.addEventListener('input', function() {
+        // ========== 指令输入功能 ==========
+        function setupCommandInput() {
+            const input = document.getElementById('messageInput');
+            
+            input.addEventListener('input', function() {
                 this.style.height = 'auto';
                 this.style.height = (this.scrollHeight) + 'px';
+                
+                const value = this.value;
+                const prompt = document.getElementById('commandPrompt');
+                
+                if (value.startsWith('/')) {
+                    prompt.classList.add('visible');
+                    this.classList.add('command-input');
+                    showCommandSuggestions(value);
+                } else {
+                    prompt.classList.remove('visible');
+                    this.classList.remove('command-input');
+                    hideCommandSuggestions();
+                }
                 
                 if (!currentUserId || !isConnected) return;
                 
@@ -1614,53 +2183,955 @@ function handlePhaseTimer(data) {
                 }, CONFIG.typingTimeout);
             });
 
-            messageInput.addEventListener('keypress', function(e) {
+            input.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     sendMessage();
-                }
-            });
-        }
-
-        if (usernameInput) {
-            usernameInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
+                } else if (e.key === 'Tab') {
                     e.preventDefault();
-                    joinChat();
+                    completeCommand();
+                } else if (e.key === 'ArrowUp') {
+                    if (commandSuggestions.length > 0) {
+                        e.preventDefault();
+                        navigateSuggestions('up');
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    if (commandSuggestions.length > 0) {
+                        e.preventDefault();
+                        navigateSuggestions('down');
+                    }
                 }
             });
         }
-    });
 
-    // 页面关闭前清理
-    window.addEventListener('beforeunload', function() {
-        if (ws) {
-            ws.close();
+        function showCommandSuggestions(input) {
+            const cmd = input.slice(1).toLowerCase();
+            const suggestions = document.getElementById('commandSuggestions');
+            const inputWrapper = document.querySelector('.message-input-wrapper');
+            
+            if (!cmd) {
+                commandSuggestions = Object.entries(GAME_COMMANDS).map(([cmd, desc]) => ({ cmd, desc }));
+            } else {
+                commandSuggestions = Object.entries(GAME_COMMANDS)
+                    .filter(([c, desc]) => c.includes(cmd) || desc.includes(cmd))
+                    .map(([cmd, desc]) => ({ cmd, desc }));
+            }
+            
+            if (commandSuggestions.length > 0) {
+                suggestions.innerHTML = commandSuggestions.map((s, index) => `
+                    <div class="suggestion-item ${index === 0 ? 'selected' : ''}" 
+                         onclick="insertCommand('/${s.cmd}')">
+                        <span class="suggestion-cmd">/${s.cmd}</span>
+                        <span class="suggestion-desc">${s.desc}</span>
+                    </div>
+                `).join('');
+                
+                suggestions.classList.add('visible');
+                
+                // 调整输入框位置，为建议列表腾出空间
+                if (inputWrapper) {
+                    inputWrapper.style.marginBottom = (suggestions.offsetHeight + 5) + 'px';
+                }
+                
+                selectedSuggestionIndex = 0;
+            } else {
+                hideCommandSuggestions();
+            }
         }
-    });
 
-    // 添加游戏玩家样式
-    const style = document.createElement('style');
-    style.textContent = `
-        .game-player.alive {
-            border-left: 3px solid #2ecc71;
+        function hideCommandSuggestions() {
+            const suggestions = document.getElementById('commandSuggestions');
+            const inputWrapper = document.querySelector('.message-input-wrapper');
+            
+            if (suggestions) {
+                suggestions.classList.remove('visible');
+            }
+            if (inputWrapper) {
+                inputWrapper.style.marginBottom = '0';
+            }
+            selectedSuggestionIndex = -1;
         }
-        .game-player.dead {
-            border-left: 3px solid #e74c3c;
-            opacity: 0.6;
-        }
-        .player-role {
-            font-size: 11px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            background: rgba(0,0,0,0.1);
-            margin-left: 5px;
-        }
-    `;
-    document.head.appendChild(style);
 
-    // 启动连接
-    connect();
+        function navigateSuggestions(direction) {
+            const items = document.querySelectorAll('.suggestion-item');
+            if (items.length === 0) return;
+            
+            items.forEach(item => item.classList.remove('selected'));
+            
+            if (direction === 'up') {
+                selectedSuggestionIndex = (selectedSuggestionIndex - 1 + items.length) % items.length;
+            } else {
+                selectedSuggestionIndex = (selectedSuggestionIndex + 1) % items.length;
+            }
+            
+            items[selectedSuggestionIndex].classList.add('selected');
+        }
+
+        function insertCommand(cmd) {
+            const input = document.getElementById('messageInput');
+            input.value = cmd + ' ';
+            input.focus();
+            hideCommandSuggestions();
+        }
+
+        function completeCommand() {
+            if (commandSuggestions.length > 0) {
+                const selected = document.querySelector('.suggestion-item.selected');
+                if (selected) {
+                    const cmd = selected.querySelector('.suggestion-cmd').textContent;
+                    insertCommand(cmd);
+                } else if (commandSuggestions[0]) {
+                    insertCommand('/' + commandSuggestions[0].cmd);
+                }
+            }
+        }
+
+        function quickCommand(cmd) {
+            const input = document.getElementById('messageInput');
+            input.value = cmd + ' ';
+            input.focus();
+        }
+
+        // ========== 用户列表 ==========
+        function updateUserList(users) {
+            const userList = document.getElementById('userList');
+            if (!userList) return;
+            
+            if (!users || users.length === 0) {
+                userList.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">暂无在线用户</div>';
+                return;
+            }
+            
+            userList.innerHTML = users.map(user => {
+                const avatar = user.username.charAt(0).toUpperCase();
+                const isCurrentUser = user.username === currentUsername;
+                const inGame = gameState.players?.some(p => p.username === user.username);
+                const isDead = inGame && gameState.players?.find(p => p.username === user.username)?.isAlive === false;
+                
+                let userClass = 'user-card';
+                if (inGame) userClass += ' in-game';
+                if (isDead) userClass += ' dead';
+                
+                return `
+                    <div class="${userClass}" onclick="quickCommand('/vote @${user.username}')">
+                        <div class="user-avatar" style="background: ${user.color || '#4a90e2'}">
+                            ${avatar}
+                        </div>
+                        <div class="user-info">
+                            <div class="user-name">
+                                ${escapeHtml(user.username)}
+                                ${isCurrentUser ? ' (你)' : ''}
+                                ${user.isAdmin ? ' 👑' : ''}
+                                ${isDead ? ' 💀' : ''}
+                            </div>
+                            <div class="user-status">
+                                ${inGame ? '<span style="color: var(--success)">游戏中</span>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateOnlineCount(count) {
+            const onlineCount = document.getElementById('onlineCount');
+            const onlineCountDetail = document.getElementById('onlineCountDetail');
+            if (onlineCount) onlineCount.textContent = count;
+            if (onlineCountDetail) onlineCountDetail.textContent = count;
+        }
+
+        // ========== 游戏功能 ==========
+        function updateGameState(state) {
+            gameState = { 
+                ...gameState, 
+                isPlaying: state.isPlaying,
+                players: state.players || [],
+                hostId: state.hostId,
+                playerCount: state.playerCount || (state.players ? state.players.length : 0),
+                gamePhase: state.gamePhase || 'waiting',
+                dayCount: state.dayCount || 1,
+                phaseEndTime: state.phaseEndTime
+            };
+            
+            console.log('更新后的游戏状态:', gameState);
+            
+            const gamePlayers = document.getElementById('gamePlayers');
+            const playerCount = document.getElementById('playerCount');
+            const gameStatus = document.getElementById('gameStatus');
+            const joinGameBtn = document.getElementById('joinGameBtn');
+            const leaveGameBtn = document.getElementById('leaveGameBtn');
+            const startGameBtn = document.getElementById('startGameBtn');
+            
+            if (playerCount) {
+                playerCount.textContent = `${gameState.playerCount}/8`;
+            }
+            
+            if (gameStatus) {
+                if (gameState.isPlaying) {
+                    let phaseText = '';
+                    switch(gameState.gamePhase) {
+                        case 'night': phaseText = `🌙 第${gameState.dayCount}天夜晚`; break;
+                        case 'day': phaseText = `☀️ 第${gameState.dayCount}天白天`; break;
+                        case 'vote': phaseText = `🗳️ 第${gameState.dayCount}天投票`; break;
+                        default: phaseText = '游戏中';
+                    }
+                    gameStatus.textContent = phaseText;
+                } else {
+                    gameStatus.textContent = '等待开始';
+                }
+            }
+            
+            if (gamePlayers) {
+                if (gameState.players.length === 0) {
+                    gamePlayers.innerHTML = '<div style="grid-column: span 2; text-align: center; padding: 20px; color: #999;">暂无玩家</div>';
+                } else {
+                    gamePlayers.innerHTML = gameState.players.map(p => {
+                        const isHost = p.userId === gameState.hostId;
+                        const isCurrent = p.userId === currentUserId;
+                        return `
+                            <div class="game-player ${p.isAlive === false ? 'dead' : 'alive'}">
+                                <span>
+                                    ${escapeHtml(p.username)}
+                                    ${isCurrent ? ' (你)' : ''}
+                                </span>
+                                ${isHost ? '<span style="color: #f39c12;">👑</span>' : ''}
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+            
+            const isInGame = gameState.players.some(p => p.userId === currentUserId);
+            
+            if (gameState.isPlaying) {
+                joinGameBtn.style.display = 'none';
+                leaveGameBtn.style.display = 'none';
+                startGameBtn.style.display = 'none';
+            } else {
+                if (isInGame) {
+                    joinGameBtn.style.display = 'none';
+                    leaveGameBtn.style.display = 'block';
+                    
+                    if (gameState.hostId === currentUserId && gameState.players.length >= 5) {
+                        startGameBtn.style.display = 'block';
+                        startGameBtn.disabled = false;
+                    } else {
+                        startGameBtn.style.display = 'none';
+                    }
+                } else {
+                    joinGameBtn.style.display = 'block';
+                    leaveGameBtn.style.display = 'none';
+                    startGameBtn.style.display = 'none';
+                }
+            }
+        }
+
+        function updateGameTimer(remaining) {
+            const timer = document.getElementById('gameTimer');
+            if (timer) {
+                const minutes = Math.floor(remaining / 60);
+                const seconds = remaining % 60;
+                timer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+
+        function updateGameInstructions(role) {
+            const instructionList = document.getElementById('instructionList');
+            if (!instructionList) return;
+            
+            let commands = [
+                { cmd: 'join', desc: '加入游戏' },
+                { cmd: 'leave', desc: '离开游戏' },
+                { cmd: 'players', desc: '查看存活玩家' },
+                { cmd: 'roles', desc: '查看剩余角色' },
+                { cmd: 'help', desc: '查看所有指令' }
+            ];
+            
+            if (gameState.isPlaying) {
+                if (role === '狼人') {
+                    commands.unshift({ cmd: 'kill @用户名', desc: '杀死一名玩家' });
+                } else if (role === '预言家') {
+                    commands.unshift({ cmd: 'check @用户名', desc: '查验一名玩家' });
+                } else if (role === '女巫') {
+                    commands.unshift(
+                        { cmd: 'save @用户名', desc: '使用解药救人' },
+                        { cmd: 'poison @用户名', desc: '使用毒药毒人' },
+                        { cmd: 'skip', desc: '跳过行动' }
+                    );
+                } else if (role === '猎人' && !gameState.players.find(p => p.userId === currentUserId)?.isAlive) {
+                    commands.unshift({ cmd: 'shoot @用户名', desc: '开枪带走一人' });
+                }
+                
+                if (gameState.gamePhase === 'vote') {
+                    commands.unshift({ cmd: 'vote @用户名', desc: '投票放逐' });
+                }
+            }
+            
+            instructionList.innerHTML = commands.map(c => `
+                <li onclick="quickCommand('/${c.cmd.split(' ')[0]}')">
+                    <span class="instruction-cmd">/${c.cmd}</span>
+                    <span class="instruction-desc">${c.desc}</span>
+                </li>
+            `).join('');
+        }
+
+        // ========== 管理员面板控制 ==========
+        function showAdminPanel() {
+            const panel = document.getElementById('adminPanel');
+            if (panel) {
+                panel.style.display = 'block';
+                ws.send(JSON.stringify({ type: 'adminGetUsers' }));
+                ws.send(JSON.stringify({ type: 'adminGetHistory' }));
+                ws.send(JSON.stringify({ type: 'adminGetBanned' }));
+            }
+        }
+
+        function hideAdminPanel() {
+            document.getElementById('adminPanel').style.display = 'none';
+        }
+
+        function switchAdminTab(tab) {
+            document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.admin-content').forEach(c => c.style.display = 'none');
+            
+            if (tab === 'users') {
+                document.querySelectorAll('.admin-tab')[0].classList.add('active');
+                document.getElementById('adminUsersTab').style.display = 'block';
+                ws.send(JSON.stringify({ type: 'adminGetUsers' }));
+            } else if (tab === 'messages') {
+                document.querySelectorAll('.admin-tab')[1].classList.add('active');
+                document.getElementById('adminMessagesTab').style.display = 'block';
+                ws.send(JSON.stringify({ type: 'adminGetHistory' }));
+            } else if (tab === 'bans') {
+                document.querySelectorAll('.admin-tab')[2].classList.add('active');
+                document.getElementById('adminBansTab').style.display = 'block';
+                ws.send(JSON.stringify({ type: 'adminGetBanned' }));
+            }
+        }
+
+        function updateAdminUsers(users) {
+            adminUsers = users;
+            const userList = document.getElementById('adminUserList');
+            if (!userList) return;
+            
+            if (!users || users.length === 0) {
+                userList.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">暂无在线用户</div>';
+                return;
+            }
+            
+            userList.innerHTML = users.map(user => {
+                const status = [];
+                if (user.isMuted) status.push('<span class="status-badge status-muted">禁言</span>');
+                if (user.isAdmin) status.push('<span class="status-badge status-admin">管理员</span>');
+                if (status.length === 0) status.push('<span class="status-badge status-normal">正常</span>');
+                
+                return `
+                    <div class="admin-user-item">
+                        <div class="admin-user-info">
+                            <span class="admin-user-name">${escapeHtml(user.username)}</span>
+                            <span class="admin-user-ip">${user.ip}</span>
+                            <div class="admin-user-status">
+                                ${status.join(' ')}
+                            </div>
+                        </div>
+                        <div class="admin-user-actions">
+                            ${user.isAdmin ? '<span style="color:#f39c12;">管理员</span>' : ''}
+                            ${!user.isAdmin ? (user.isMuted ? 
+                                `<button class="btn-unmute" onclick="adminUnmute('${user.username}')">取消禁言</button>` : 
+                                `<button class="btn-mute" onclick="adminMute('${user.username}')">禁言</button>`
+                            ) : ''}
+                            ${!user.isAdmin ? `<button class="btn-ban" onclick="adminBan('${user.username}')">封禁IP</button>` : ''}
+                            ${!user.isAdmin ? `<button class="btn-kick" onclick="adminKick('${user.username}')">踢出</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateAdminMessages(messages) {
+            adminMessages = messages;
+            const messageList = document.getElementById('adminMessageList');
+            if (!messageList) return;
+            
+            if (!messages || messages.length === 0) {
+                messageList.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">暂无消息记录</div>';
+                return;
+            }
+            
+            messageList.innerHTML = messages.slice().reverse().map(msg => `
+                <div class="admin-message-item">
+                    <div class="admin-message-header">
+                        <span>${escapeHtml(msg.username)}</span>
+                        <span>${msg.timestamp}</span>
+                    </div>
+                    <div class="admin-message-content">${escapeHtml(msg.content)}</div>
+                    <div class="admin-message-id">ID: ${msg.id}</div>
+                    <div class="admin-message-actions">
+                        <button class="btn-recall" onclick="adminRecall('${msg.id}')">撤回</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateBannedIPs(ips) {
+            const banList = document.getElementById('adminBanList');
+            if (!banList) return;
+            
+            if (!ips || ips.length === 0) {
+                banList.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">暂无封禁IP</div>';
+                return;
+            }
+            
+            banList.innerHTML = ips.map(ip => `
+                <div class="admin-user-item">
+                    <div class="admin-user-info">
+                        <span class="admin-user-ip">${ip}</span>
+                        <div class="admin-user-status">
+                            <span class="status-badge status-banned">已封禁</span>
+                        </div>
+                    </div>
+                    <div class="admin-user-actions">
+                        <button class="btn-unmute" onclick="adminUnban('${ip}')">解封</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ========== 管理员操作函数 ==========
+        function adminMute(username) {
+            const reason = prompt('请输入禁言原因：', '违规发言');
+            if (reason !== null) {
+                ws.send(JSON.stringify({
+                    type: 'adminMute',
+                    username: username,
+                    reason: reason
+                }));
+                addTerminalLog(`[ADMIN] 发送禁言命令: ${username}`, 'admin');
+                showAdminNotification(`已发送禁言请求: ${username}`);
+            }
+        }
+
+        function adminUnmute(username) {
+            if (confirm(`确定要取消 ${username} 的禁言吗？`)) {
+                ws.send(JSON.stringify({
+                    type: 'adminUnmute',
+                    username: username
+                }));
+                addTerminalLog(`[ADMIN] 发送取消禁言命令: ${username}`, 'admin');
+                showAdminNotification(`已发送取消禁言请求: ${username}`);
+            }
+        }
+
+        function adminBan(username) {
+            const reason = prompt('请输入封禁原因：', '恶意行为');
+            if (reason !== null) {
+                if (confirm(`确定要封禁 ${username} 的IP吗？`)) {
+                    ws.send(JSON.stringify({
+                        type: 'adminBan',
+                        username: username,
+                        reason: reason
+                    }));
+                    addTerminalLog(`[ADMIN] 发送封禁命令: ${username}`, 'admin');
+                    showAdminNotification(`已发送封禁请求: ${username}`);
+                }
+            }
+        }
+
+        function adminUnban(ip) {
+            if (confirm(`确定要解封IP ${ip} 吗？`)) {
+                ws.send(JSON.stringify({
+                    type: 'adminUnban',
+                    ip: ip
+                }));
+                addTerminalLog(`[ADMIN] 发送解封命令: ${ip}`, 'admin');
+                showAdminNotification(`已发送解封请求: ${ip}`);
+            }
+        }
+
+        function adminKick(username) {
+            const reason = prompt('请输入踢出原因：', '违规行为');
+            if (reason !== null) {
+                if (confirm(`确定要将 ${username} 踢出聊天室吗？`)) {
+                    ws.send(JSON.stringify({
+                        type: 'adminKick',
+                        username: username,
+                        reason: reason
+                    }));
+                    addTerminalLog(`[ADMIN] 发送踢出命令: ${username}`, 'admin');
+                    showAdminNotification(`已发送踢出请求: ${username}`);
+                }
+            }
+        }
+
+        function adminRecall(messageId) {
+            const reason = prompt('请输入撤回原因：', '不当言论');
+            if (reason !== null) {
+                if (confirm(`确定要撤回这条消息吗？`)) {
+                    ws.send(JSON.stringify({
+                        type: 'adminRecall',
+                        messageId: messageId,
+                        reason: reason
+                    }));
+                    addTerminalLog(`[ADMIN] 发送撤回命令: ${messageId}`, 'admin');
+                    showAdminNotification(`已发送撤回请求: ${messageId}`);
+                }
+            }
+        }
+
+        function showAdminNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'admin-notification';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // ========== CMD终端功能 ==========
+        function initTerminal() {
+            addTerminalLog('╔══════════════════════════════════════╗', 'info');
+            addTerminalLog('║               SUCCESS                ║', 'success');
+            addTerminalLog('╚══════════════════════════════════════╝', 'info');
+            addTerminalLog('', 'info');
+            addTerminalLog('系统时间: ' + new Date().toLocaleString(), 'info');
+            addTerminalLog('当前用户: ' + currentUsername, 'info');
+            addTerminalLog('IP地址: ' + (currentUserIp || 'Unknown'), 'info');
+            addTerminalLog('', 'info');
+            addTerminalLog('输入 "help" 查看可用命令', 'info');
+        }
+
+        function toggleTerminal() {
+            // 手机端不执行任何操作
+            if (window.innerWidth <= 768) return;
+            
+            const terminal = document.getElementById('cmdTerminal');
+            const toggleBtn = document.getElementById('terminalToggle');
+            
+            terminalVisible = !terminalVisible;
+            if (terminalVisible) {
+                terminal.classList.add('visible');
+                toggleBtn.classList.add('active');
+                toggleBtn.innerHTML = '<i class="fas fa-times"></i>';
+                
+                if (currentUserIsAdmin) {
+                    document.getElementById('cmdInput').disabled = false;
+                    document.getElementById('cmdInput').focus();
+                }
+            } else {
+                terminal.classList.remove('visible');
+                toggleBtn.classList.remove('active');
+                toggleBtn.innerHTML = '<i class="fas fa-terminal"></i>';
+                document.getElementById('cmdInput').disabled = true;
+            }
+        }
+
+        function addTerminalLog(message, type = 'info') {
+            // 手机端不记录日志
+            if (window.innerWidth <= 768) return;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            let logClass = 'cmd-log-info';
+            
+            switch(type) {
+                case 'warning': logClass = 'cmd-log-warning'; break;
+                case 'error': logClass = 'cmd-log-error'; break;
+                case 'success': logClass = 'cmd-log-success'; break;
+                case 'admin': logClass = 'cmd-log-admin'; break;
+                case 'game': logClass = 'cmd-log-game'; break;
+            }
+            
+            const logLine = `<span class="cmd-timestamp">[${timestamp}]</span> <span class="${logClass}">${message}</span>`;
+            terminalLogs.push(logLine);
+            
+            const terminalContent = document.getElementById('terminalContent');
+            if (terminalContent) {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'cmd-line';
+                lineDiv.innerHTML = logLine;
+                terminalContent.appendChild(lineDiv);
+                
+                terminalContent.scrollTop = terminalContent.scrollHeight;
+            }
+        }
+
+        function clearTerminal() {
+            const terminalContent = document.getElementById('terminalContent');
+            if (terminalContent) {
+                terminalContent.innerHTML = '';
+                terminalLogs = [];
+                addTerminalLog('控制台已清空', 'info');
+                addTerminalLog('输入 "help" 查看可用命令', 'info');
+            }
+        }
+
+        // 处理管理员命令
+        function handleAdminCommand(command) {
+            const parts = command.split(' ');
+            const cmd = parts[0].toLowerCase();
+            const args = parts.slice(1);
+
+            addTerminalLog(`ADMIN@SERVER:~$ ${command}`, 'info');
+
+            switch(cmd) {
+                case 'help':
+                    addTerminalLog('可用命令:', 'info');
+                    Object.entries(ADMIN_COMMANDS).forEach(([cmd, desc]) => {
+                        addTerminalLog(`  ${cmd.padEnd(20)} - ${desc}`, 'info');
+                    });
+                    break;
+
+                case 'users':
+                    addTerminalLog('获取在线用户列表...', 'info');
+                    ws.send(JSON.stringify({ type: 'adminGetUsers' }));
+                    break;
+
+                case 'userinfo':
+                    if (args.length < 1) {
+                        addTerminalLog('用法: userinfo <用户名>', 'error');
+                        return;
+                    }
+                    const username = args[0];
+                    const user = adminUsers.find(u => u.username === username);
+                    if (user) {
+                        addTerminalLog(`用户信息: ${user.username}`, 'success');
+                        addTerminalLog(`  ID: ${user.id}`, 'info');
+                        addTerminalLog(`  IP: ${user.ip}`, 'info');
+                        addTerminalLog(`  状态: ${user.isMuted ? '禁言中' : '正常'}`, user.isMuted ? 'warning' : 'success');
+                        addTerminalLog(`  管理员: ${user.isAdmin ? '是' : '否'}`, user.isAdmin ? 'admin' : 'info');
+                    } else {
+                        addTerminalLog(`用户 ${username} 不存在`, 'error');
+                    }
+                    break;
+
+                case 'mute':
+                    if (args.length < 1) {
+                        addTerminalLog('用法: mute <用户名> [原因]', 'error');
+                        return;
+                    }
+                    const muteUser = args[0];
+                    const muteReason = args.slice(1).join(' ') || '管理员操作';
+                    ws.send(JSON.stringify({
+                        type: 'adminMute',
+                        username: muteUser,
+                        reason: muteReason
+                    }));
+                    addTerminalLog(`已发送禁言命令: ${muteUser}`, 'admin');
+                    break;
+
+                case 'unmute':
+                    if (args.length < 1) {
+                        addTerminalLog('用法: unmute <用户名>', 'error');
+                        return;
+                    }
+                    ws.send(JSON.stringify({
+                        type: 'adminUnmute',
+                        username: args[0]
+                    }));
+                    addTerminalLog(`已发送取消禁言命令: ${args[0]}`, 'admin');
+                    break;
+
+                case 'kick':
+                    if (args.length < 1) {
+                        addTerminalLog('用法: kick <用户名> [原因]', 'error');
+                        return;
+                    }
+                    const kickUser = args[0];
+                    const kickReason = args.slice(1).join(' ') || '管理员操作';
+                    ws.send(JSON.stringify({
+                        type: 'adminKick',
+                        username: kickUser,
+                        reason: kickReason
+                    }));
+                    addTerminalLog(`已发送踢出命令: ${kickUser}`, 'admin');
+                    break;
+
+                case 'ban':
+                    if (args.length < 1) {
+                        addTerminalLog('用法: ban <用户名/IP> [原因]', 'error');
+                        return;
+                    }
+                    const target = args[0];
+                    const banReason = args.slice(1).join(' ') || '管理员操作';
+                    
+                    // 判断是IP还是用户名
+                    if (target.includes('.')) {
+                        ws.send(JSON.stringify({
+                            type: 'adminBan',
+                            ip: target,
+                            reason: banReason
+                        }));
+                        addTerminalLog(`已发送封禁IP命令: ${target}`, 'admin');
+                    } else {
+                        ws.send(JSON.stringify({
+                            type: 'adminBan',
+                            username: target,
+                            reason: banReason
+                        }));
+                        addTerminalLog(`已发送封禁用户命令: ${target}`, 'admin');
+                    }
+                    break;
+
+                case 'unban':
+                    if (args.length < 1) {
+                        addTerminalLog('用法: unban <IP>', 'error');
+                        return;
+                    }
+                    ws.send(JSON.stringify({
+                        type: 'adminUnban',
+                        ip: args[0]
+                    }));
+                    addTerminalLog(`已发送解封IP命令: ${args[0]}`, 'admin');
+                    break;
+
+                case 'recall':
+                    if (args.length < 1) {
+                        addTerminalLog('用法: recall <消息ID> [原因]', 'error');
+                        return;
+                    }
+                    const msgId = args[0];
+                    const recallReason = args.slice(1).join(' ') || '管理员操作';
+                    ws.send(JSON.stringify({
+                        type: 'adminRecall',
+                        messageId: msgId,
+                        reason: recallReason
+                    }));
+                    addTerminalLog(`已发送撤回命令: ${msgId}`, 'admin');
+                    break;
+
+                case 'logs':
+                    const limit = args.length > 0 ? parseInt(args[0]) : 50;
+                    addTerminalLog(`获取最近 ${limit} 条日志...`, 'info');
+                    ws.send(JSON.stringify({ type: 'adminGetLogs' }));
+                    break;
+
+                case 'search':
+                    if (args.length < 1) {
+                        addTerminalLog('用法: search <用户名/IP>', 'error');
+                        return;
+                    }
+                    const searchTerm = args[0].toLowerCase();
+                    
+                    // 搜索用户
+                    const matchedUsers = adminUsers.filter(u => 
+                        u.username.toLowerCase().includes(searchTerm) || 
+                        u.ip.includes(searchTerm)
+                    );
+                    
+                    if (matchedUsers.length > 0) {
+                        addTerminalLog(`找到 ${matchedUsers.length} 个匹配的用户:`, 'success');
+                        matchedUsers.forEach(u => {
+                            addTerminalLog(`  ${u.username} - IP: ${u.ip} - 状态: ${u.isMuted ? '禁言' : '正常'}`, 'info');
+                        });
+                    } else {
+                        addTerminalLog('未找到匹配的用户', 'warning');
+                    }
+                    
+                    // 搜索封禁IP
+                    const matchedBans = bannedIPs.filter(ip => ip.includes(searchTerm));
+                    if (matchedBans.length > 0) {
+                        addTerminalLog(`找到 ${matchedBans.length} 个匹配的封禁IP:`, 'warning');
+                        matchedBans.forEach(ip => {
+                            addTerminalLog(`  ${ip}`, 'warning');
+                        });
+                    }
+                    break;
+
+                case 'stats':
+                    addTerminalLog('服务器统计:', 'info');
+                    addTerminalLog(`  在线用户: ${adminUsers.length}`, 'info');
+                    addTerminalLog(`  游戏进行中: ${gameState.isPlaying ? '是' : '否'}`, 'info');
+                    addTerminalLog(`  游戏玩家: ${gameState.players.length}/8`, 'info');
+                    addTerminalLog(`  消息总数: ${adminMessages.length}`, 'info');
+                    addTerminalLog(`  封禁IP数: ${bannedIPs.length}`, 'info');
+                    addTerminalLog(`  日志条数: ${terminalLogs.length}`, 'info');
+                    break;
+
+                case 'clear':
+                    clearTerminal();
+                    break;
+
+                default:
+                    addTerminalLog(`未知命令: ${cmd}`, 'error');
+                    addTerminalLog('输入 "help" 查看可用命令', 'info');
+            }
+        }
+
+        // ========== 可拖动终端 ==========
+        function makeDraggable() {
+            // 手机端不启用拖动
+            if (window.innerWidth <= 768) return;
+            
+            const terminal = document.getElementById('cmdTerminal');
+            const header = document.getElementById('terminalHeader');
+            
+            if (!terminal || !header) return;
+            
+            header.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                const rect = terminal.getBoundingClientRect();
+                dragOffsetX = e.clientX - rect.left;
+                dragOffsetY = e.clientY - rect.top;
+                terminal.style.cursor = 'grabbing';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                
+                e.preventDefault();
+                const x = e.clientX - dragOffsetX;
+                const y = e.clientY - dragOffsetY;
+                
+                terminal.style.left = x + 'px';
+                terminal.style.top = y + 'px';
+                terminal.style.right = 'auto';
+                terminal.style.bottom = 'auto';
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                terminal.style.cursor = 'default';
+            });
+        }
+
+        // ========== UI控制 ==========
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            
+            if (tab === 'chat') {
+                document.querySelectorAll('.tab-item')[0].classList.add('active');
+                document.getElementById('chatPanel').classList.add('active');
+            } else if (tab === 'users') {
+                document.querySelectorAll('.tab-item')[1].classList.add('active');
+                document.getElementById('usersPanel').classList.add('active');
+            } else if (tab === 'game') {
+                document.querySelectorAll('.tab-item')[2].classList.add('active');
+                document.getElementById('gamePanel').classList.add('active');
+                
+                if (isConnected) {
+                    ws.send(JSON.stringify({ type: 'getGameState' }));
+                }
+            }
+        }
+
+        // ========== 工具函数 ==========
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('loginError');
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                setTimeout(() => {
+                    errorDiv.style.display = 'none';
+                }, 3000);
+            } else {
+                alert(message);
+            }
+        }
+
+        // ========== 事件监听 ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageInput = document.getElementById('messageInput');
+            const usernameInput = document.getElementById('username');
+            
+            if (messageInput) {
+                messageInput.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = (this.scrollHeight) + 'px';
+                });
+            }
+
+            if (usernameInput) {
+                usernameInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        joinChat();
+                    }
+                });
+            }
+
+            // CMD输入处理
+            const cmdInput = document.getElementById('cmdInput');
+            if (cmdInput) {
+                cmdInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        const command = this.value.trim();
+                        if (command) {
+                            handleAdminCommand(command);
+                            this.value = '';
+                            
+                            cmdHistory.push(command);
+                            cmdHistoryIndex = cmdHistory.length;
+                        }
+                    }
+                });
+
+                cmdInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (cmdHistoryIndex > 0) {
+                            cmdHistoryIndex--;
+                            this.value = cmdHistory[cmdHistoryIndex];
+                        }
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (cmdHistoryIndex < cmdHistory.length - 1) {
+                            cmdHistoryIndex++;
+                            this.value = cmdHistory[cmdHistoryIndex];
+                        } else {
+                            cmdHistoryIndex = cmdHistory.length;
+                            this.value = '';
+                        }
+                    }
+                });
+            }
+
+            // 根据屏幕宽度决定是否初始化拖动
+            if (window.innerWidth > 768) {
+                makeDraggable();
+            }
+
+            // 点击其他地方关闭指令建议
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.message-input-wrapper') && !e.target.closest('.command-suggestions')) {
+                    hideCommandSuggestions();
+                }
+            });
+        });
+
+        // 页面关闭前清理
+        window.addEventListener('beforeunload', function() {
+            if (ws) {
+                ws.close();
+            }
+        });
+
+        // 添加游戏玩家样式
+        const style = document.createElement('style');
+        style.textContent = `
+            .game-player.alive {
+                border-left: 3px solid #2ecc71;
+            }
+            .game-player.dead {
+                border-left: 3px solid #e74c3c;
+                opacity: 0.6;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 启动连接
+        connect();
     </script>
 </body>
 </html>
